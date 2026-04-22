@@ -219,7 +219,7 @@ Both stored as JSON in Electron's `userData` directory.
 - Settings UI for webcam selection, avatar loading, smoothing tuning
 - Persisted config
 - Tested under real streaming load alongside OBS + a game
-- *Success criteria:* stream a full DJ set with it on, don't want to punch it
+- *Success criteria:* can use it on a stream
 
 ### M5 (stretch): The nice-to-haves
 - Calibration routine
