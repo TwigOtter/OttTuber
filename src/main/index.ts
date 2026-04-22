@@ -31,10 +31,18 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  // Serve VRM files from the project's VRMs/ folder to the renderer
-  ipcMain.handle('load-vrm', (_event, filename: string) => {
-    const vrmPath = join(app.getAppPath(), 'VRMs', filename)
+  ipcMain.handle('load-vrm', (_event, relativePath: string) => {
+    const vrmPath = join(app.getAppPath(), relativePath)
     return readFileSync(vrmPath).buffer
+  })
+
+  ipcMain.handle('load-config', () => {
+    const configPath = join(app.getAppPath(), 'config.json')
+    try {
+      return JSON.parse(readFileSync(configPath, 'utf-8'))
+    } catch {
+      return null
+    }
   })
 
   createWindow()
