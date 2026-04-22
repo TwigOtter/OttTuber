@@ -116,11 +116,21 @@ async function loadFaceLandmarker(): Promise<FaceLandmarker> {
 // Webcam
 // ---------------------------------------------------------------------------
 
-async function openWebcam(): Promise<HTMLVideoElement> {
+async function openWebcam(webcam: AppConfig['webcam']): Promise<HTMLVideoElement> {
   const video = document.createElement('video')
   video.style.display = 'none'
   document.body.appendChild(video)
-  const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+
+  let videoConstraint: MediaTrackConstraints | boolean = true
+  if (webcam?.deviceLabel) {
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    const match = devices.find(d => d.kind === 'videoinput' && d.label === webcam.deviceLabel)
+    if (match) videoConstraint = { deviceId: { exact: match.deviceId } }
+  } else if (webcam?.deviceId) {
+    videoConstraint = { deviceId: { exact: webcam.deviceId } }
+  }
+
+  const stream = await navigator.mediaDevices.getUserMedia({ video: videoConstraint })
   video.srcObject = stream
   await video.play()
   return video
@@ -151,7 +161,7 @@ async function main(): Promise<void> {
   const [vrm, faceLandmarker, video] = await Promise.all([
     loadVrm(config.model.path),
     loadFaceLandmarker(),
-    openWebcam()
+    openWebcam(config.webcam)
   ])
 
   // Apply camera from config

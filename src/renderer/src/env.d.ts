@@ -6,6 +6,10 @@ interface AppConfig {
     lookAt: [number, number, number]
     fov: number
   }
+  webcam?: {
+    deviceLabel?: string | null
+    deviceId?: string | null
+  }
   model: {
     path: string
     scale: number
