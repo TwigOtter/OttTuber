@@ -13,7 +13,7 @@ See DESIGN.md for full architecture and milestone definitions.
 
 ## Current milestone
 
-**M1 complete** (2026-04-22): jaw tracking works. See DESIGN.md §7 for M2–M5.
+**M2 complete** (2026-04-24): Full 52 blendshapes + one-euro smoothing + head rotation. Face is expressively mirroring the user. Config-driven setup. See DESIGN.md §7 for M3–M5.
 
 ## Dev workflow
 
