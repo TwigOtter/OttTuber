@@ -39,6 +39,10 @@ Edit `config.json` to tune tracking and appearance:
     "lookAt": [0, 0.70, 0],
     "fov": 35
   },
+  "webcam": {
+    "deviceLabel": null,
+    "deviceId": null
+  },
   "model": {
     "path": "VRMs/your-avatar.vrm",
     "scale": 1.0,
@@ -72,6 +76,8 @@ Edit `config.json` to tune tracking and appearance:
 - **`blendshapeAmplify`** — amplify specific expressions (blinks default to 2.0 because MediaPipe tends to underscore them)
 - **`blendshapeFilter.minCutoff`** — lower = more smoothing (1.0 Hz is gentle; increase for less smoothing)
 - **`blendshapeFilter.beta`** — adaptive smoothing factor (higher = more responsive to fast movements)
+- **`webcam.deviceLabel`** — name of the camera as your OS exposes it (e.g. `"Logitech BRIO"`); matched via `enumerateDevices()` at startup. Preferred over `deviceId`.
+- **`webcam.deviceId`** — raw browser device ID; use this if label matching doesn't work. Leave both `null` to use the system default camera.
 - **`blendshapeFilterOverrides`** — per-expression filter settings (eyes use higher minCutoff for snappier blinks)
 
 Rebuild not required — just save `config.json` and restart the app.
@@ -108,6 +114,12 @@ npm start      # launch the already-built app
 
 **M4 (planned)** — Settings UI, webcam selection, persisted profiles.
 
+## Contributing
+
+OttTuber is pre-beta and under active development — many things are incomplete or rough by design. Bug reports and feature requests are welcome, but please check the milestone list above before reporting something as broken; it may already be known and planned.
+
+**Code contributions are very welcome.** If you want to pick something up, open an issue or comment on an existing one so we can coordinate. PRs against `main` are fine for small fixes; for larger changes it's worth a quick discussion first.
+
 ## Known Limitations
 
 - Hand tracking not yet implemented (M3)
@@ -129,6 +141,23 @@ npm start      # launch the already-built app
 
 ### Avatar faces the wrong direction
 - Adjust `model.rotation.y` in `config.json` (180° is typical, try 0° or 360°)
+
+### Wrong camera is being used / want to select a specific webcam
+
+The `webcam.deviceLabel` config field lets you target a specific camera by name. To find the right name:
+
+1. Temporarily enable DevTools by adding `win.webContents.openDevTools()` to `createWindow()` in `src/main/index.ts`, then run `npm run build && npm start`
+2. In the DevTools **Console** tab, run:
+   ```js
+   navigator.mediaDevices.enumerateDevices().then(d => console.table(d.filter(x => x.kind === 'videoinput')))
+   ```
+3. Find your camera in the table. Copy its **label** into `config.json`:
+   ```json
+   "webcam": { "deviceLabel": "Logitech BRIO", "deviceId": null }
+   ```
+4. Remove the `openDevTools()` line and rebuild.
+
+Alternatively, copy the **deviceId** into `webcam.deviceId` instead — useful if two devices share the same label. Note that device IDs can change across OS reinstalls or USB reconnects, so label matching is more reliable long-term.
 
 ### Tracking feels laggy
 - Increase `blendshapeFilter.minCutoff` and `headFilter.minCutoff` (higher = less smoothing)
