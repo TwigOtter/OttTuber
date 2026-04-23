@@ -142,7 +142,7 @@ async function openWebcam(webcam: AppConfig['webcam']): Promise<HTMLVideoElement
 
 const DEFAULT_CONFIG: AppConfig = {
   camera: { position: [0, 0.75, 1.1], lookAt: [0, 0.60, 0], fov: 35 },
-  model: { path: 'VRMs/Twig-dotter-ARKit.vrm', scale: 1.0, rotation: [0, 180, 0] },
+  model: { path: 'VRMs/Twig-dotter-ARKit.vrm', scale: 1.0, rotation: [0, 180, 0], mirror: false },
   tracking: {
     blendshapeAmplify: { eyeBlinkLeft: 2.0, eyeBlinkRight: 2.0 },
     blendshapeFilter: { minCutoff: 1.0, beta: 0.007 },
@@ -240,14 +240,22 @@ async function main(): Promise<void> {
       const txMatrix = result.facialTransformationMatrixes?.[0]
       if (txMatrix && headBone) {
         // MediaPipe outputs a column-major 4x4 matrix (OpenGL convention) in camera space.
-        // Negate X and Y to match VRM coordinate system with avatar facing the camera.
         // If any axis feels inverted when testing, flip its sign here.
+        // To mirror the model, you can also apply a 180° rotation to the Y axis in the config and flip the signs of the X and Z axes here.
         mat4.fromArray(txMatrix.data)
         euler.setFromRotationMatrix(mat4, 'YXZ')
+
+        const mirror = config.model.mirror ?? false
+
+        if (mirror) {
+          euler.y = -euler.y
+          euler.z = -euler.z
+        }
+
         headBone.quaternion.setFromEuler(new THREE.Euler(
           headFilters[0].filter(-euler.x, now),
-          headFilters[1].filter(-euler.y, now),
-          headFilters[2].filter( euler.z, now),
+          headFilters[1].filter(euler.y, now),
+          headFilters[2].filter(-euler.z, now),
           'YXZ'
         ))
       }
