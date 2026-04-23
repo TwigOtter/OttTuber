@@ -21,6 +21,9 @@ jobs:
         env:
           ELECTRON_SKIP_BINARY_DOWNLOAD: 1
 
+      - name: Lint
+        run: npm run lint
+
       - name: Type check
         run: npx tsc --noEmit -p tsconfig.node.json && npx tsc --noEmit -p tsconfig.web.json
 
