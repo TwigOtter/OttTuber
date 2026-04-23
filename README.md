@@ -9,6 +9,7 @@ A lightweight VRM 1.x avatar renderer with real-time face tracking for streaming
 - **One-euro smoothing** — configurable per-expression filtering to reduce jitter
 - **Transparent window** — frameless, transparent background for easy OBS integration
 - **Config-driven** — adjust camera, tracking smoothing, and avatar parameters via `config.json` without rebuilding
+- **Debug window** — live readout of every MediaPipe value with animated bars so you can see exactly what the tracker is doing
 
 ## Requirements
 
@@ -46,7 +47,8 @@ Edit `config.json` to tune tracking and appearance:
   "model": {
     "path": "VRMs/your-avatar.vrm",
     "scale": 1.0,
-    "rotation": [0, 180, 0]
+    "rotation": [0, 180, 0],
+    "mirror": true,
   },
   "tracking": {
     "blendshapeAmplify": {
@@ -73,6 +75,7 @@ Edit `config.json` to tune tracking and appearance:
 
 - **`model.path`** — relative path to your VRM file (e.g., `VRMs/my-avatar.vrm`)
 - **`model.rotation`** — Euler angles in degrees to orient the avatar (default `[0, 180, 0]` faces camera)
+- **`model.mirror`** — set to `true` to mirror the avatar (set by negating the X scale of the model)
 - **`blendshapeAmplify`** — amplify specific expressions (blinks default to 2.0 because MediaPipe tends to underscore them)
 - **`blendshapeFilter.minCutoff`** — lower = more smoothing (1.0 Hz is gentle; increase for less smoothing)
 - **`blendshapeFilter.beta`** — adaptive smoothing factor (higher = more responsive to fast movements)
@@ -81,6 +84,17 @@ Edit `config.json` to tune tracking and appearance:
 - **`blendshapeFilterOverrides`** — per-expression filter settings (eyes use higher minCutoff for snappier blinks)
 
 Rebuild not required — just save `config.json` and restart the app.
+
+## Debug Window
+
+A debug window opens automatically alongside the avatar window. It shows every value MediaPipe is producing in real time:
+
+- **Head rotation** — pitch, yaw, and roll in degrees, displayed as an orange bar centred at 0° so you can see the direction at a glance
+- **Blendshapes** — all 52 ARKit scores (or the standard VRM mapped values), 0–1, shown as a blue fill bar with the numeric value alongside
+
+A small status badge in the header switches between **tracking** (green) and **no face** (grey) depending on whether the landmarker is picking up a face.
+
+Close the window whenever you don't need it. Press **Ctrl+Shift+D** to bring it back.
 
 ## Architecture
 

@@ -154,6 +154,8 @@ const DEFAULT_CONFIG: AppConfig = {
   }
 }
 
+const RAD_TO_DEG = 180 / Math.PI
+
 async function main(): Promise<void> {
   // Config must resolve first — VRM path comes from it
   const config: AppConfig = (await window.electron.loadConfig()) ?? DEFAULT_CONFIG
@@ -177,6 +179,11 @@ async function main(): Promise<void> {
   vrm.scene.rotation.set(rx, ry, rz)
   vrm.scene.scale.setScalar(config.model.scale)
   scene.add(vrm.scene)
+
+  // Mirror by negating the X scale. This is a simple way to mirror the avatar without needing to adjust the tracking data.
+  if (config.model.mirror) {
+    vrm.scene.scale.x *= -1
+  }
 
   // ARKit avatars expose 'jawOpen' as a custom expression — direct pass-through.
   // Standard VRM avatars only have the built-in expression set — use the mapping table.
@@ -208,6 +215,10 @@ async function main(): Promise<void> {
       lastVideoTime = video.currentTime
       const result = faceLandmarker.detectForVideo(video, Date.now())
 
+      const debugBlendshapes: DebugData['blendshapes'] = []
+      let debugHead: DebugData['head'] = { pitch: 0, yaw: 0, roll: 0 }
+      const detected = !!(result.faceBlendshapes?.[0] || result.facialTransformationMatrixes?.[0])
+
       // --- Blendshapes ---
       const shapes = result.faceBlendshapes?.[0]?.categories
       const em = vrm.expressionManager
@@ -222,7 +233,9 @@ async function main(): Promise<void> {
               const p = bsOverrides[name] ?? { minCutoff: bsMin, beta: bsBeta }
               bsFilters.set(name, new OneEuroFilter(p.minCutoff, p.beta))
             }
-            em.setValue(name, bsFilters.get(name)!.filter(raw, now))
+            const filtered = bsFilters.get(name)!.filter(raw, now)
+            em.setValue(name, filtered)
+            debugBlendshapes.push({ name, value: filtered })
           }
         } else {
           const scoreMap = new Map(shapes.map((s) => [s.categoryName, s.score]))
@@ -230,7 +243,9 @@ async function main(): Promise<void> {
             if (em.getValue(vrmExpr) === undefined) continue
             const raw = Math.min(1, sources.reduce((sum, [src, w]) => sum + (scoreMap.get(src) ?? 0) * w, 0))
             if (!bsFilters.has(vrmExpr)) bsFilters.set(vrmExpr, new OneEuroFilter(bsMin, bsBeta))
-            em.setValue(vrmExpr, bsFilters.get(vrmExpr)!.filter(raw, now))
+            const filtered = bsFilters.get(vrmExpr)!.filter(raw, now)
+            em.setValue(vrmExpr, filtered)
+            debugBlendshapes.push({ name: vrmExpr, value: filtered })
           }
         }
         em.update()
@@ -244,21 +259,18 @@ async function main(): Promise<void> {
         // To mirror the model, you can also apply a 180° rotation to the Y axis in the config and flip the signs of the X and Z axes here.
         mat4.fromArray(txMatrix.data)
         euler.setFromRotationMatrix(mat4, 'YXZ')
-
-        const mirror = config.model.mirror ?? false
-
-        if (mirror) {
-          euler.y = -euler.y
-          euler.z = -euler.z
+        const hx = headFilters[0].filter(-euler.x, now)
+        const hy = headFilters[1].filter( euler.y, now)
+        const hz = headFilters[2].filter(-euler.z, now)
+        headBone.quaternion.setFromEuler(new THREE.Euler(hx, hy, hz, 'YXZ'))
+        debugHead = {
+          pitch: hx * RAD_TO_DEG,
+          yaw:   hy * RAD_TO_DEG,
+          roll:  hz * RAD_TO_DEG,
         }
-
-        headBone.quaternion.setFromEuler(new THREE.Euler(
-          headFilters[0].filter(-euler.x, now),
-          headFilters[1].filter(euler.y, now),
-          headFilters[2].filter(-euler.z, now),
-          'YXZ'
-        ))
       }
+
+      window.electron.sendDebugData({ detected, blendshapes: debugBlendshapes, head: debugHead })
     }
 
     vrm.update(delta)

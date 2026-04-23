@@ -1,6 +1,30 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, globalShortcut } from 'electron'
 import { join } from 'path'
 import { readFileSync } from 'fs'
+
+let debugWin: BrowserWindow | null = null
+
+function createDebugWindow(): void {
+  debugWin = new BrowserWindow({
+    width: 480,
+    height: 900,
+    title: 'OttTuber Debug',
+    backgroundColor: '#0d1117',
+    webPreferences: {
+      preload: join(__dirname, '../preload/index.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  if (process.env['ELECTRON_RENDERER_URL']) {
+    debugWin.loadURL(`${process.env['ELECTRON_RENDERER_URL']}/debug.html`)
+  } else {
+    debugWin.loadFile(join(__dirname, '../renderer/debug.html'))
+  }
+
+  debugWin.on('closed', () => { debugWin = null })
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -45,7 +69,23 @@ app.whenReady().then(() => {
     }
   })
 
+  // Forward debug data from the renderer to the debug window
+  ipcMain.on('debug-data', (_event, data) => {
+    debugWin?.webContents.send('debug-data', data)
+  })
+
   createWindow()
+  createDebugWindow()
+
+  // Ctrl+Shift+D toggles the debug window
+  globalShortcut.register('CommandOrControl+Shift+D', () => {
+    if (debugWin) {
+      debugWin.close()
+    } else {
+      createDebugWindow()
+    }
+  })
+
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -53,4 +93,8 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('will-quit', () => {
+  globalShortcut.unregisterAll()
 })

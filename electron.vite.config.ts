@@ -1,4 +1,5 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import { resolve } from 'path'
 
 export default defineConfig({
   main: {
@@ -8,6 +9,14 @@ export default defineConfig({
     plugins: [externalizeDepsPlugin()]
   },
   renderer: {
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          debug: resolve(__dirname, 'src/renderer/debug.html'),
+        }
+      }
+    },
     server: {
       headers: {
         // Allow loading MediaPipe WASM from CDN and webcam access

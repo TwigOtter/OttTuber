@@ -24,9 +24,17 @@ interface AppConfig {
   }
 }
 
+interface DebugData {
+  detected: boolean
+  blendshapes: Array<{ name: string; value: number }>
+  head: { pitch: number; yaw: number; roll: number }
+}
+
 interface Window {
   electron: {
     loadVrm(filename: string): Promise<ArrayBuffer>
     loadConfig(): Promise<AppConfig | null>
+    sendDebugData(data: DebugData): void
+    onDebugData(callback: (data: DebugData) => void): void
   }
 }
