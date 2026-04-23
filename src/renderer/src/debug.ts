@@ -44,12 +44,12 @@ style.textContent = `
     color: #484f58;
   }
 
-  #scroll {
+  #scrollContainer {
     flex: 1;
     overflow-y: auto;
     padding: 8px 0;
-    scrollbar-width: thin;
-    scrollbar-color: #30363d #0d1117;
+    scrollContainerbar-width: thin;
+    scrollContainerbar-color: #30363d #0d1117;
   }
 
   .section-label {
@@ -131,9 +131,9 @@ header.innerHTML = `
 `
 document.body.appendChild(header)
 
-const scroll = document.createElement('div')
-scroll.id = 'scroll'
-document.body.appendChild(scroll)
+const scrollContainer = document.createElement('div')
+scrollContainer.id = 'scroll'
+document.body.appendChild(scrollContainer)
 
 const statusEl = document.getElementById('status')!
 
@@ -226,14 +226,14 @@ let bsSection: HTMLElement | null = null
 
 function ensureSections(hasHead: boolean, hasBlendshapes: boolean): void {
   if (hasHead && !headSection) {
-    addSectionLabel(scroll, 'Head Rotation')
+    addSectionLabel(scrollContainer, 'Head Rotation')
     headSection = document.createElement('div')
-    scroll.appendChild(headSection)
+    scrollContainer.appendChild(headSection)
   }
   if (hasBlendshapes && !bsSection) {
-    addSectionLabel(scroll, 'Blendshapes')
+    addSectionLabel(scrollContainer, 'Blendshapes')
     bsSection = document.createElement('div')
-    scroll.appendChild(bsSection)
+    scrollContainer.appendChild(bsSection)
   }
 }
 
