@@ -48,8 +48,8 @@ style.textContent = `
     flex: 1;
     overflow-y: auto;
     padding: 8px 0;
-    scrollContainerbar-width: thin;
-    scrollContainerbar-color: #30363d #0d1117;
+    scrollbar-width: thin;
+    scrollbar-color: #30363d #0d1117;
   }
 
   .section-label {
@@ -132,7 +132,7 @@ header.innerHTML = `
 document.body.appendChild(header)
 
 const scrollContainer = document.createElement('div')
-scrollContainer.id = 'scroll'
+scrollContainer.id = 'scrollContainer'
 document.body.appendChild(scrollContainer)
 
 const statusEl = document.getElementById('status')!
