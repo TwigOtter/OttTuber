@@ -47,7 +47,8 @@ Edit `config.json` to tune tracking and appearance:
   "model": {
     "path": "VRMs/your-avatar.vrm",
     "scale": 1.0,
-    "rotation": [0, 180, 0]
+    "rotation": [0, 180, 0],
+    "mirror": true,
   },
   "tracking": {
     "blendshapeAmplify": {
@@ -74,6 +75,7 @@ Edit `config.json` to tune tracking and appearance:
 
 - **`model.path`** — relative path to your VRM file (e.g., `VRMs/my-avatar.vrm`)
 - **`model.rotation`** — Euler angles in degrees to orient the avatar (default `[0, 180, 0]` faces camera)
+- **`model.mirror`** — set to `true` to mirror the avatar (set by negating the X scale of the model)
 - **`blendshapeAmplify`** — amplify specific expressions (blinks default to 2.0 because MediaPipe tends to underscore them)
 - **`blendshapeFilter.minCutoff`** — lower = more smoothing (1.0 Hz is gentle; increase for less smoothing)
 - **`blendshapeFilter.beta`** — adaptive smoothing factor (higher = more responsive to fast movements)

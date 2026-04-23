@@ -180,6 +180,11 @@ async function main(): Promise<void> {
   vrm.scene.scale.setScalar(config.model.scale)
   scene.add(vrm.scene)
 
+  // Mirror by negating the X scale. This is a simple way to mirror the avatar without needing to adjust the tracking data.
+  if (config.model.mirror) {
+    vrm.scene.scale.x *= -1
+  }
+
   // ARKit avatars expose 'jawOpen' as a custom expression — direct pass-through.
   // Standard VRM avatars only have the built-in expression set — use the mapping table.
   const useARKit = vrm.expressionManager?.getValue('jawOpen') !== undefined
@@ -255,8 +260,8 @@ async function main(): Promise<void> {
         mat4.fromArray(txMatrix.data)
         euler.setFromRotationMatrix(mat4, 'YXZ')
         const hx = headFilters[0].filter(-euler.x, now)
-        const hy = headFilters[1].filter(-euler.y, now)
-        const hz = headFilters[2].filter( euler.z, now)
+        const hy = headFilters[1].filter( euler.y, now)
+        const hz = headFilters[2].filter(-euler.z, now)
         headBone.quaternion.setFromEuler(new THREE.Euler(hx, hy, hz, 'YXZ'))
         debugHead = {
           pitch: hx * RAD_TO_DEG,

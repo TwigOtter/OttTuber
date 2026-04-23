@@ -14,6 +14,7 @@ interface AppConfig {
     path: string
     scale: number
     rotation: [number, number, number]
+    mirror: boolean
   }
   tracking: {
     blendshapeAmplify: Record<string, number>
