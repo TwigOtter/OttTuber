@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
-import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm'
+import { VRM, VRMLoaderPlugin, VRMHumanBoneName } from '@pixiv/three-vrm'
 import { FilesetResolver, FaceLandmarker, PoseLandmarker, HandLandmarker } from '@mediapipe/tasks-vision'
 
 // ---------------------------------------------------------------------------
@@ -244,7 +244,7 @@ async function main(): Promise<void> {
     },
   }
 
-  const hb = (name: string) => vrm.humanoid?.getNormalizedBoneNode(name) ?? null
+  const hb = (name: VRMHumanBoneName) => vrm.humanoid?.getNormalizedBoneNode(name) ?? null
   const handBones = {
     left: {
       wrist:              hb('leftHand'),
@@ -344,6 +344,10 @@ async function main(): Promise<void> {
       const fingerDir = pts[HLM.MIDDLE[0]].clone().sub(pts[HLM.WRIST]).normalize()
       const sideVec   = pts[HLM.INDEX[0]].clone().sub(pts[HLM.LITTLE[0]])
       const handNorm  = new THREE.Vector3().crossVectors(fingerDir, sideVec).normalize()
+
+      if (side === 'left') {
+        handNorm.negate() // Left hand's "side" vector points from little to index, opposite of right hand
+      }
 
       // Step 1: align finger direction (pitch + yaw)
       const fingerLocal = fingerDir.clone().applyQuaternion(invLower)
