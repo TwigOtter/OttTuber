@@ -11,11 +11,11 @@
 Existing VTuber tooling on Windows is fragmented and aging:
 
 - **VSeeFace** is the de facto standard for VRM streaming, but:
-  - Only supports VRM 0.9, not VRM 1.x — cuts off most modern avatars
-  - Face tracking quality is behind the curve even with ARKit passthrough (FaceMotion3D)
-  - Hand tracking requires a LeapMotion device (~$140 hardware dependency)
-  - Closed-source and no longer under active development
-- **VRChat's built-in desktop tracking** (webcam-based) now produces better face *and* hand tracking than VSeeFace + ARKit, using only a 720p webcam. This proves the tech is ready.
+    - Only supports VRM 0.9, not VRM 1.x — cuts off most modern avatars
+    - Face tracking quality is behind the curve even with ARKit passthrough (FaceMotion3D)
+    - Hand tracking requires a LeapMotion device (~$140 hardware dependency)
+    - Closed-source and no longer under active development
+- **VRChat's built-in desktop tracking** (webcam-based) now produces better face _and_ hand tracking than VSeeFace + ARKit, using only a 720p webcam. This proves the tech is ready.
 - **Unity's offerings** in this space are toy demos, not standalone tools.
 
 The opportunity: Google's **MediaPipe Face Landmarker** outputs 52 ARKit-compatible blendshape coefficients directly from a standard webcam. Combined with MediaPipe's hand tracking and modern VRM 1.x rendering via **three-vrm**, a lightweight standalone tracker is feasible as a personal project — and fills a real gap for streamers who've outgrown VSeeFace.
@@ -43,7 +43,7 @@ The opportunity: Google's **MediaPipe Face Landmarker** outputs 52 ARKit-compati
 
 ### Explicit philosophical non-goals
 
-- Not reinventing VSeeFace. This is a *replacement* for VSeeFace for VRM 1.x users who want better tracking from a webcam. If a feature exists in VSeeFace and works fine, we don't need to match it.
+- Not reinventing VSeeFace. This is a _replacement_ for VSeeFace for VRM 1.x users who want better tracking from a webcam. If a feature exists in VSeeFace and works fine, we don't need to match it.
 - Not building a commercial product. This is for Twig's stream and whoever else wants it.
 
 ## 3. High-level architecture
@@ -98,10 +98,10 @@ Single Electron process to start. If MediaPipe inference on the main thread caus
 - **Input:** webcam stream via `getUserMedia`
 - **Libraries:** `@mediapipe/tasks-vision` — provides both FaceLandmarker and HandLandmarker
 - **Outputs per frame:**
-  - 52 ARKit blendshape coefficients (0.0–1.0 each)
-  - Head pose (rotation quaternion, derived from face landmarks)
-  - 21 hand landmarks × 2 hands (3D positions in camera space)
-  - Confidence scores per output
+    - 52 ARKit blendshape coefficients (0.0–1.0 each)
+    - Head pose (rotation quaternion, derived from face landmarks)
+    - 21 hand landmarks × 2 hands (3D positions in camera space)
+    - Confidence scores per output
 - **Target rate:** 30 Hz minimum, 60 Hz if hardware allows
 
 ### 4.2 Smoothing layer
@@ -109,6 +109,7 @@ Single Electron process to start. If MediaPipe inference on the main thread caus
 Raw MediaPipe output is jittery. Use the **one-euro filter** — it's specifically designed for this, it's ~30 lines of code, and it handles the latency/smoothness tradeoff dynamically based on signal velocity.
 
 Apply per-channel:
+
 - Each blendshape coefficient: its own one-euro filter
 - Head rotation: quaternion-space smoothing (SLERP toward filtered target)
 - Hand landmarks: one-euro per landmark position
@@ -123,9 +124,9 @@ MediaPipe outputs the 52 ARKit blendshape names. VRM 1.x defines a standard expr
 
 1. **Direct pass-through** for avatars that expose ARKit blendshapes as custom expressions (many modern VRMs do — it's a convention). three-vrm supports custom expressions via `expressionManager.setValue(name, weight)`.
 2. **Standard VRM expression blending** for avatars that only expose the VRM 1.x standard set. Use a lookup table that combines multiple ARKit blendshapes into each VRM expression. Example:
-   - VRM `happy` ≈ weighted blend of ARKit `mouthSmileLeft`, `mouthSmileRight`, `cheekSquintLeft`, `cheekSquintRight`
-   - VRM `aa` ≈ `jawOpen`
-   - VRM `blinkLeft` ≈ `eyeBlinkLeft`
+    - VRM `happy` ≈ weighted blend of ARKit `mouthSmileLeft`, `mouthSmileRight`, `cheekSquintLeft`, `cheekSquintRight`
+    - VRM `aa` ≈ `jawOpen`
+    - VRM `blinkLeft` ≈ `eyeBlinkLeft`
 3. **Graceful fallback:** if neither set is available, log a warning and apply whatever does exist.
 
 Detect which mode to use at avatar load by inspecting `vrm.expressionManager.expressions`.
@@ -195,33 +196,38 @@ Both stored as JSON in Electron's `userData` directory.
 - **Hand tracking when hands are off-camera.** Hide the hands entirely? Freeze last pose? Lerp to a neutral rest pose? Latter feels best but adds complexity.
 - **Avatar calibration.** Raw blendshape zero is not the user's neutral face. A "hold a neutral expression for 3 seconds" calibration step on startup would help a lot. Priority: v1 or v2?
 - **Performance budget.** Target a single modern GPU running the tracker + renderer at 60Hz + a VRChat or similar game simultaneously. Need to profile early and often.
-- **VSeeFace protocol compatibility.** VSeeFace has a UDP protocol some tools consume. Worth emitting for compatibility? Probably not for v1 — the whole point is to *not* be VSeeFace.
+- **VSeeFace protocol compatibility.** VSeeFace has a UDP protocol some tools consume. Worth emitting for compatibility? Probably not for v1 — the whole point is to _not_ be VSeeFace.
 
 ## 7. Milestones
 
 ### M1: Dead-simple prototype
+
 - Electron app with a transparent window
 - MediaPipe face tracking running on the main thread
 - A hardcoded VRM loads and its `jawOpen` expression follows the user's mouth
-- *Success criteria:* open your mouth, avatar opens its mouth. That's it.
+- _Success criteria:_ open your mouth, avatar opens its mouth. That's it.
 
 ### M2: Full face mapping
+
 - All 52 blendshapes routed through the ARKit → VRM mapping layer
 - One-euro smoothing in place
 - Head rotation working
-- *Success criteria:* avatar's face is clearly expressive and recognizably mirroring the user
+- _Success criteria:_ avatar's face is clearly expressive and recognizably mirroring the user
 
 ### M3: Hands
+
 - Hand tracking active, wrist + fingers driven from MediaPipe
-- *Success criteria:* can wave at chat
+- _Success criteria:_ can wave at chat
 
 ### M4: Usable for an actual stream
+
 - Settings UI for webcam selection, avatar loading, smoothing tuning
 - Persisted config
 - Tested under real streaming load alongside OBS + a game
-- *Success criteria:* can use it on a stream
+- _Success criteria:_ can use it on a stream
 
 ### M5 (stretch): The nice-to-haves
+
 - Calibration routine
 - Hotkey support
 - Multiple avatar profiles

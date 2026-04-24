@@ -3,19 +3,26 @@
 // without a reference to vite/client, which doesn't apply in the debug window)
 // ---------------------------------------------------------------------------
 
-interface DebugBlendshape { name: string; value: number }
-interface DebugHead { pitch: number; yaw: number; roll: number }
+interface DebugBlendshape {
+	name: string;
+	value: number;
+}
+interface DebugHead {
+	pitch: number;
+	yaw: number;
+	roll: number;
+}
 interface DebugData {
-  detected: boolean
-  blendshapes: DebugBlendshape[]
-  head: DebugHead
+	detected: boolean;
+	blendshapes: DebugBlendshape[];
+	head: DebugHead;
 }
 
 // ---------------------------------------------------------------------------
 // Build the static chrome (header + two section containers)
 // ---------------------------------------------------------------------------
 
-const style = document.createElement('style')
+const style = document.createElement("style");
 style.textContent = `
   body { display: flex; flex-direction: column; height: 100vh; }
 
@@ -119,66 +126,66 @@ style.textContent = `
     color: #e6edf3;
     font-variant-numeric: tabular-nums;
   }
-`
-document.head.appendChild(style)
+`;
+document.head.appendChild(style);
 
-const header = document.createElement('div')
-header.id = 'header'
+const header = document.createElement("div");
+header.id = "header";
 header.innerHTML = `
   <h1>OttTuber Debug</h1>
   <span id="status">waiting…</span>
   <span id="shortcut">Ctrl+Shift+D to toggle</span>
-`
-document.body.appendChild(header)
+`;
+document.body.appendChild(header);
 
-const scrollContainer = document.createElement('div')
-scrollContainer.id = 'scrollContainer'
-document.body.appendChild(scrollContainer)
+const scrollContainer = document.createElement("div");
+scrollContainer.id = "scrollContainer";
+document.body.appendChild(scrollContainer);
 
-const statusEl = document.getElementById('status')!
+const statusEl = document.getElementById("status")!;
 
 // ---------------------------------------------------------------------------
 // Row cache — create DOM nodes once, update values each frame
 // ---------------------------------------------------------------------------
 
 interface RowElements {
-  bar: HTMLDivElement
-  val: HTMLSpanElement
+	bar: HTMLDivElement;
+	val: HTMLSpanElement;
 }
 
-const rowCache = new Map<string, RowElements>()
+const rowCache = new Map<string, RowElements>();
 
 function getOrCreateRow(
-  container: HTMLElement,
-  key: string,
-  isHead: boolean
+	container: HTMLElement,
+	key: string,
+	isHead: boolean,
 ): RowElements {
-  if (rowCache.has(key)) return rowCache.get(key)!
+	if (rowCache.has(key)) return rowCache.get(key)!;
 
-  const row = document.createElement('div')
-  row.className = 'row'
+	const row = document.createElement("div");
+	row.className = "row";
 
-  const name = document.createElement('span')
-  name.className = 'name'
-  name.textContent = key
-  name.title = key
+	const name = document.createElement("span");
+	name.className = "name";
+	name.textContent = key;
+	name.title = key;
 
-  const track = document.createElement('div')
-  track.className = isHead ? 'track centered' : 'track'
+	const track = document.createElement("div");
+	track.className = isHead ? "track centered" : "track";
 
-  const bar = document.createElement('div')
-  bar.className = isHead ? 'bar head' : 'bar'
-  track.appendChild(bar)
+	const bar = document.createElement("div");
+	bar.className = isHead ? "bar head" : "bar";
+	track.appendChild(bar);
 
-  const val = document.createElement('span')
-  val.className = 'val'
+	const val = document.createElement("span");
+	val.className = "val";
 
-  row.append(name, track, val)
-  container.appendChild(row)
+	row.append(name, track, val);
+	container.appendChild(row);
 
-  const els = { bar, val }
-  rowCache.set(key, els)
-  return els
+	const els = { bar, val };
+	rowCache.set(key, els);
+	return els;
 }
 
 // ---------------------------------------------------------------------------
@@ -186,55 +193,63 @@ function getOrCreateRow(
 // ---------------------------------------------------------------------------
 
 /** Blendshape bar: 0 → 1, left-anchored */
-function updateBlendshapeRow(container: HTMLElement, name: string, value: number): void {
-  const { bar, val } = getOrCreateRow(container, name, false)
-  bar.style.left = '0'
-  bar.style.width = `${Math.max(0, Math.min(1, value)) * 100}%`
-  bar.style.right = ''
-  val.textContent = value.toFixed(3)
+function updateBlendshapeRow(
+	container: HTMLElement,
+	name: string,
+	value: number,
+): void {
+	const { bar, val } = getOrCreateRow(container, name, false);
+	bar.style.left = "0";
+	bar.style.width = `${Math.max(0, Math.min(1, value)) * 100}%`;
+	bar.style.right = "";
+	val.textContent = value.toFixed(3);
 }
 
 /** Head rotation bar: –90° → +90°, centred at 50% */
-function updateHeadRow(container: HTMLElement, label: string, degrees: number): void {
-  const { bar, val } = getOrCreateRow(container, label, true)
-  const norm = Math.max(-1, Math.min(1, degrees / 90))
-  if (norm >= 0) {
-    bar.style.left = '50%'
-    bar.style.width = `${norm * 50}%`
-    bar.style.right = ''
-  } else {
-    bar.style.right = '50%'
-    bar.style.width = `${-norm * 50}%`
-    bar.style.left = ''
-  }
-  val.textContent = `${degrees >= 0 ? '+' : ''}${degrees.toFixed(1)}°`
+function updateHeadRow(
+	container: HTMLElement,
+	label: string,
+	degrees: number,
+): void {
+	const { bar, val } = getOrCreateRow(container, label, true);
+	const norm = Math.max(-1, Math.min(1, degrees / 90));
+	if (norm >= 0) {
+		bar.style.left = "50%";
+		bar.style.width = `${norm * 50}%`;
+		bar.style.right = "";
+	} else {
+		bar.style.right = "50%";
+		bar.style.width = `${-norm * 50}%`;
+		bar.style.left = "";
+	}
+	val.textContent = `${degrees >= 0 ? "+" : ""}${degrees.toFixed(1)}°`;
 }
 
 function addSectionLabel(container: HTMLElement, text: string): void {
-  const el = document.createElement('div')
-  el.className = 'section-label'
-  el.textContent = text
-  container.appendChild(el)
+	const el = document.createElement("div");
+	el.className = "section-label";
+	el.textContent = text;
+	container.appendChild(el);
 }
 
 // ---------------------------------------------------------------------------
 // Section containers (created lazily on first data, then reused)
 // ---------------------------------------------------------------------------
 
-let headSection: HTMLElement | null = null
-let bsSection: HTMLElement | null = null
+let headSection: HTMLElement | null = null;
+let bsSection: HTMLElement | null = null;
 
 function ensureSections(hasHead: boolean, hasBlendshapes: boolean): void {
-  if (hasHead && !headSection) {
-    addSectionLabel(scrollContainer, 'Head Rotation')
-    headSection = document.createElement('div')
-    scrollContainer.appendChild(headSection)
-  }
-  if (hasBlendshapes && !bsSection) {
-    addSectionLabel(scrollContainer, 'Blendshapes')
-    bsSection = document.createElement('div')
-    scrollContainer.appendChild(bsSection)
-  }
+	if (hasHead && !headSection) {
+		addSectionLabel(scrollContainer, "Head Rotation");
+		headSection = document.createElement("div");
+		scrollContainer.appendChild(headSection);
+	}
+	if (hasBlendshapes && !bsSection) {
+		addSectionLabel(scrollContainer, "Blendshapes");
+		bsSection = document.createElement("div");
+		scrollContainer.appendChild(bsSection);
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -242,27 +257,28 @@ function ensureSections(hasHead: boolean, hasBlendshapes: boolean): void {
 // ---------------------------------------------------------------------------
 
 window.electron.onDebugData((data: DebugData) => {
-  // Update detection status badge
-  if (data.detected) {
-    statusEl.textContent = 'tracking'
-    statusEl.className = 'detected'
-  } else {
-    statusEl.textContent = 'no face'
-    statusEl.className = ''
-  }
+	// Update detection status badge
+	if (data.detected) {
+		statusEl.textContent = "tracking";
+		statusEl.className = "detected";
+	} else {
+		statusEl.textContent = "no face";
+		statusEl.className = "";
+	}
 
-  const hasHead = data.head.pitch !== 0 || data.head.yaw !== 0 || data.head.roll !== 0
-  ensureSections(hasHead, data.blendshapes.length > 0)
+	const hasHead =
+		data.head.pitch !== 0 || data.head.yaw !== 0 || data.head.roll !== 0;
+	ensureSections(hasHead, data.blendshapes.length > 0);
 
-  if (headSection) {
-    updateHeadRow(headSection, 'pitch', data.head.pitch)
-    updateHeadRow(headSection, 'yaw',   data.head.yaw)
-    updateHeadRow(headSection, 'roll',  data.head.roll)
-  }
+	if (headSection) {
+		updateHeadRow(headSection, "pitch", data.head.pitch);
+		updateHeadRow(headSection, "yaw", data.head.yaw);
+		updateHeadRow(headSection, "roll", data.head.roll);
+	}
 
-  if (bsSection) {
-    for (const bs of data.blendshapes) {
-      updateBlendshapeRow(bsSection, bs.name, bs.value)
-    }
-  }
-})
+	if (bsSection) {
+		for (const bs of data.blendshapes) {
+			updateBlendshapeRow(bsSection, bs.name, bs.value);
+		}
+	}
+});
