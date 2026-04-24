@@ -479,7 +479,10 @@ async function main(): Promise<void> {
 				// visually twists with the hand; the remainder stays on the wrist bone.
 				// fullWristQuat (q2*q1) is preserved for finger parent-space so finger
 				// world positions are unaffected by the split.
-				const q2Forearm = new THREE.Quaternion().slerp(q2, FOREARM_ROLL_FRACTION);
+				const q2Forearm = new THREE.Quaternion().slerp(
+					q2,
+					FOREARM_ROLL_FRACTION,
+				);
 				const q2Wrist = q2Forearm.clone().invert().multiply(q2);
 				lowerArmBone.quaternion.multiply(q2Forearm);
 				fullWristQuat.copy(q2.clone().multiply(q1));
