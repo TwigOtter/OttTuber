@@ -23,6 +23,8 @@ interface AppConfig {
     headFilter: { minCutoff: number; beta: number }
     armCalibration?: {
       poseScale?: { x: number; y: number; z: number }
+      minCutoff?: number
+      beta?: number
     }
   }
 }

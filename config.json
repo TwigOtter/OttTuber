@@ -32,7 +32,9 @@
       "beta": 0.1
     },
     "armCalibration": {
-      "poseScale": { "x": 1.0, "y": 1.0, "z": 1.0 }
+      "poseScale": { "x": 1.0, "y": 1.0, "z": 1.0 },
+      "minCutoff": 1.0,
+      "beta": 0.01
     }
   }
 }

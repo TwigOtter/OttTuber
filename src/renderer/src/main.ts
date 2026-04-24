@@ -175,6 +175,7 @@ const DEFAULT_CONFIG: AppConfig = {
       eyeBlinkRight: { minCutoff: 10.0, beta: 0.5 },
     },
     headFilter: { minCutoff: 1.5, beta: 0.1 },
+    armCalibration: { minCutoff: 1.0, beta: 0.01 },
   }
 }
 
@@ -291,8 +292,21 @@ async function main(): Promise<void> {
   )
   const handFilters = { left: mkHandF(), right: mkHandF() }
 
+  // T-pose rest directions for setFromUnitVectors
+  const RIGHT = new THREE.Vector3(1, 0, 0)
+  const LEFT  = new THREE.Vector3(-1, 0, 0)
+
+  const cal = config.tracking.armCalibration
+  const poseScale = new THREE.Vector3(
+    cal?.poseScale?.x ?? 1,
+    cal?.poseScale?.y ?? 1,
+    cal?.poseScale?.z ?? 1,
+  )
+  const armMin  = cal?.minCutoff ?? 2.0
+  const armBeta = cal?.beta      ?? 0.3
+  
   // One-euro filter per world-landmark axis: [x, y, z]
-  const mkF = () => [new OneEuroFilter(2.0, 0.3), new OneEuroFilter(2.0, 0.3), new OneEuroFilter(2.0, 0.3)]
+  const mkF = () => [new OneEuroFilter(armMin, armBeta), new OneEuroFilter(armMin, armBeta), new OneEuroFilter(armMin, armBeta)]
   const poseFilters = {
     leftShoulder:  mkF(), rightShoulder: mkF(),
     leftElbow:     mkF(), rightElbow:    mkF(),
@@ -312,17 +326,6 @@ async function main(): Promise<void> {
       f[1].filter(-lm.y, t),
       f[2].filter( lm.z, t)
     )
-
-  // T-pose rest directions for setFromUnitVectors
-  const RIGHT = new THREE.Vector3(1, 0, 0)
-  const LEFT  = new THREE.Vector3(-1, 0, 0)
-
-  const cal = config.tracking.armCalibration
-  const poseScale = new THREE.Vector3(
-    cal?.poseScale?.x ?? 1,
-    cal?.poseScale?.y ?? 1,
-    cal?.poseScale?.z ?? 1,
-  )
 
   // Hand landmark indices
   const HLM = {
