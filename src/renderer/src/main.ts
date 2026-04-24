@@ -66,17 +66,17 @@ scene.add(sun)
 // Fallback mapping for avatars that only expose standard VRM 1.x expressions.
 // Each entry is [arkitBlendshapeName, weight]. Multiple sources are summed and clamped.
 const STANDARD_VRM_MAP: Record<string, [string, number][]> = {
-  blinkLeft:  [['eyeBlinkLeft', 1]],
+  blinkLeft: [['eyeBlinkLeft', 1]],
   blinkRight: [['eyeBlinkRight', 1]],
-  aa:         [['jawOpen', 1]],
-  ih:         [['mouthClose', 0.6]],
-  ou:         [['mouthPucker', 1]],
-  ee:         [['mouthStretchLeft', 0.5], ['mouthStretchRight', 0.5]],
-  oh:         [['jawOpen', 0.4], ['mouthFunnel', 0.6]],
-  happy:      [['mouthSmileLeft', 0.5], ['mouthSmileRight', 0.5]],
-  sad:        [['mouthFrownLeft', 0.5], ['mouthFrownRight', 0.5]],
-  angry:      [['browDownLeft', 0.5], ['browDownRight', 0.5]],
-  surprised:  [['browInnerUp', 0.6], ['eyeWideLeft', 0.2], ['eyeWideRight', 0.2]],
+  aa: [['jawOpen', 1]],
+  ih: [['mouthClose', 0.6]],
+  ou: [['mouthPucker', 1]],
+  ee: [['mouthStretchLeft', 0.5], ['mouthStretchRight', 0.5]],
+  oh: [['jawOpen', 0.4], ['mouthFunnel', 0.6]],
+  happy: [['mouthSmileLeft', 0.5], ['mouthSmileRight', 0.5]],
+  sad: [['mouthFrownLeft', 0.5], ['mouthFrownRight', 0.5]],
+  angry: [['browDownLeft', 0.5], ['browDownRight', 0.5]],
+  surprised: [['browInnerUp', 0.6], ['eyeWideLeft', 0.2], ['eyeWideRight', 0.2]],
 }
 
 async function loadVrm(path: string): Promise<VRM> {
@@ -171,7 +171,7 @@ const DEFAULT_CONFIG: AppConfig = {
     blendshapeAmplify: { eyeBlinkLeft: 2.0, eyeBlinkRight: 2.0 },
     blendshapeFilter: { minCutoff: 1.0, beta: 0.007 },
     blendshapeFilterOverrides: {
-      eyeBlinkLeft:  { minCutoff: 10.0, beta: 0.5 },
+      eyeBlinkLeft: { minCutoff: 10.0, beta: 0.5 },
       eyeBlinkRight: { minCutoff: 10.0, beta: 0.5 },
     },
     headFilter: { minCutoff: 1.5, beta: 0.1 },
@@ -235,7 +235,7 @@ async function main(): Promise<void> {
   const euler = new THREE.Euler()
 
   const armBones = {
-    left:  {
+    left: {
       upper: vrm.humanoid?.getNormalizedBoneNode('leftUpperArm'),
       lower: vrm.humanoid?.getNormalizedBoneNode('leftLowerArm'),
     },
@@ -248,40 +248,40 @@ async function main(): Promise<void> {
   const hb = (name: VRMHumanBoneName) => vrm.humanoid?.getNormalizedBoneNode(name) ?? null
   const handBones = {
     left: {
-      wrist:              hb('leftHand'),
-      thumbMetacarpal:    hb('leftThumbMetacarpal'),
-      thumbProximal:      hb('leftThumbProximal'),
-      thumbDistal:        hb('leftThumbDistal'),
-      indexProximal:      hb('leftIndexProximal'),
-      indexIntermediate:  hb('leftIndexIntermediate'),
-      indexDistal:        hb('leftIndexDistal'),
-      middleProximal:     hb('leftMiddleProximal'),
+      wrist: hb('leftHand'),
+      thumbMetacarpal: hb('leftThumbMetacarpal'),
+      thumbProximal: hb('leftThumbProximal'),
+      thumbDistal: hb('leftThumbDistal'),
+      indexProximal: hb('leftIndexProximal'),
+      indexIntermediate: hb('leftIndexIntermediate'),
+      indexDistal: hb('leftIndexDistal'),
+      middleProximal: hb('leftMiddleProximal'),
       middleIntermediate: hb('leftMiddleIntermediate'),
-      middleDistal:       hb('leftMiddleDistal'),
-      ringProximal:       hb('leftRingProximal'),
-      ringIntermediate:   hb('leftRingIntermediate'),
-      ringDistal:         hb('leftRingDistal'),
-      littleProximal:     hb('leftLittleProximal'),
+      middleDistal: hb('leftMiddleDistal'),
+      ringProximal: hb('leftRingProximal'),
+      ringIntermediate: hb('leftRingIntermediate'),
+      ringDistal: hb('leftRingDistal'),
+      littleProximal: hb('leftLittleProximal'),
       littleIntermediate: hb('leftLittleIntermediate'),
-      littleDistal:       hb('leftLittleDistal'),
+      littleDistal: hb('leftLittleDistal'),
     },
     right: {
-      wrist:              hb('rightHand'),
-      thumbMetacarpal:    hb('rightThumbMetacarpal'),
-      thumbProximal:      hb('rightThumbProximal'),
-      thumbDistal:        hb('rightThumbDistal'),
-      indexProximal:      hb('rightIndexProximal'),
-      indexIntermediate:  hb('rightIndexIntermediate'),
-      indexDistal:        hb('rightIndexDistal'),
-      middleProximal:     hb('rightMiddleProximal'),
+      wrist: hb('rightHand'),
+      thumbMetacarpal: hb('rightThumbMetacarpal'),
+      thumbProximal: hb('rightThumbProximal'),
+      thumbDistal: hb('rightThumbDistal'),
+      indexProximal: hb('rightIndexProximal'),
+      indexIntermediate: hb('rightIndexIntermediate'),
+      indexDistal: hb('rightIndexDistal'),
+      middleProximal: hb('rightMiddleProximal'),
       middleIntermediate: hb('rightMiddleIntermediate'),
-      middleDistal:       hb('rightMiddleDistal'),
-      ringProximal:       hb('rightRingProximal'),
-      ringIntermediate:   hb('rightRingIntermediate'),
-      ringDistal:         hb('rightRingDistal'),
-      littleProximal:     hb('rightLittleProximal'),
+      middleDistal: hb('rightMiddleDistal'),
+      ringProximal: hb('rightRingProximal'),
+      ringIntermediate: hb('rightRingIntermediate'),
+      ringDistal: hb('rightRingDistal'),
+      littleProximal: hb('rightLittleProximal'),
       littleIntermediate: hb('rightLittleIntermediate'),
-      littleDistal:       hb('rightLittleDistal'),
+      littleDistal: hb('rightLittleDistal'),
     },
   }
   type HandBones = typeof handBones.left
@@ -294,7 +294,7 @@ async function main(): Promise<void> {
 
   // T-pose rest directions for setFromUnitVectors
   const RIGHT = new THREE.Vector3(1, 0, 0)
-  const LEFT  = new THREE.Vector3(-1, 0, 0)
+  const LEFT = new THREE.Vector3(-1, 0, 0)
 
   const cal = config.tracking.armCalibration
   const poseScale = new THREE.Vector3(
@@ -302,15 +302,15 @@ async function main(): Promise<void> {
     cal?.poseScale?.y ?? 1,
     cal?.poseScale?.z ?? 1,
   )
-  const armMin  = cal?.minCutoff ?? 2.0
-  const armBeta = cal?.beta      ?? 0.3
-  
+  const armMin = cal?.minCutoff ?? 2.0
+  const armBeta = cal?.beta ?? 0.3
+
   // One-euro filter per world-landmark axis: [x, y, z]
   const mkF = () => [new OneEuroFilter(armMin, armBeta), new OneEuroFilter(armMin, armBeta), new OneEuroFilter(armMin, armBeta)]
   const poseFilters = {
-    leftShoulder:  mkF(), rightShoulder: mkF(),
-    leftElbow:     mkF(), rightElbow:    mkF(),
-    leftWrist:     mkF(), rightWrist:    mkF(),
+    leftShoulder: mkF(), rightShoulder: mkF(),
+    leftElbow: mkF(), rightElbow: mkF(),
+    leftWrist: mkF(), rightWrist: mkF(),
   }
 
   // MediaPipe pose world space: +X toward person's left, +Y up, +Z toward camera.
@@ -324,18 +324,32 @@ async function main(): Promise<void> {
     new THREE.Vector3(
       f[0].filter(-lm.x, t),
       f[1].filter(-lm.y, t),
-      f[2].filter( lm.z, t)
+      f[2].filter(lm.z, t)
     )
 
-  // Hand landmark indices
-  const HLM = {
+
+  // Some models (especially furries) only have eight fingers total (no separate ring finger joints). 
+  // For these, I find that applying the ring finger's pose to the little finger makes the little finger stick out less awkwardly when the hand is open. 
+  // This is a simple heuristic and won't work well in all cases, but it seems to help more often than not.
+
+  const hasRingFinger = (!handBones.left.littleProximal && handBones.left.ringProximal && handBones.left.littleProximal === null)
+
+  // Define HLM based on hasRingFinger
+  const HLM = hasRingFinger ? {
     WRIST: 0,
-    THUMB:  [1, 2, 3, 4],
-    INDEX:  [5, 6, 7, 8],
+    THUMB: [1, 2, 3, 4],
+    INDEX: [5, 6, 7, 8],
     MIDDLE: [9, 10, 11, 12],
-    RING:   [13, 14, 15, 16],
+    RING: [13, 14, 15, 16],
     LITTLE: [17, 18, 19, 20],
-  }
+  } : {
+    WRIST: 0,
+    THUMB: [1, 2, 3, 4],
+    INDEX: [5, 6, 7, 8],
+    MIDDLE: [9, 10, 11, 12],
+    RING: [17, 18, 19, 20],
+    LITTLE: [13, 14, 15, 16],
+  };
 
   function applyHandPose(pts: THREE.Vector3[], side: 'left' | 'right', bones: HandBones, lowerArmWorldQuat: THREE.Quaternion): void {
     const restDir = side === 'right' ? RIGHT.clone() : LEFT.clone()
@@ -345,19 +359,16 @@ async function main(): Promise<void> {
     const wristQuat = new THREE.Quaternion()
     if (bones.wrist) {
       const fingerDir = pts[HLM.MIDDLE[0]].clone().sub(pts[HLM.WRIST]).normalize()
-      const sideVec   = pts[HLM.INDEX[0]].clone().sub(pts[HLM.LITTLE[0]])
-      const handNorm  = new THREE.Vector3().crossVectors(fingerDir, sideVec).normalize()
-
-      if (side === 'left') {
-        handNorm.negate() // Left hand's "side" vector points from little to index, opposite of right hand
-      }
+      const sideVec = pts[HLM.INDEX[0]].clone().sub(pts[HLM.LITTLE[0]])
+      if (side === 'left') sideVec.negate() // Left hand's "side" vector points from little to index, opposite of right hand
+      const handNorm = new THREE.Vector3().crossVectors(fingerDir, sideVec).normalize()
 
       // Step 1: align finger direction (pitch + yaw)
       const fingerLocal = fingerDir.clone().applyQuaternion(invLower)
       const q1 = new THREE.Quaternion().setFromUnitVectors(restDir, fingerLocal)
 
       // Step 2: align palm normal (roll) — twist around the finger axis
-      const normLocal   = handNorm.clone().applyQuaternion(invLower)
+      const normLocal = handNorm.clone().applyQuaternion(invLower)
       const nominalNorm = new THREE.Vector3(0, 1, 0).applyQuaternion(q1)
       const fd = fingerLocal.clone().normalize()
       const nomPerp = nominalNorm.clone().addScaledVector(fd, -nominalNorm.dot(fd))
@@ -376,11 +387,11 @@ async function main(): Promise<void> {
 
     // --- Finger chains: [landmark indices], [bones] ---
     const chains: [number[], (THREE.Object3D | null)[]][] = [
-      [HLM.THUMB,  [bones.thumbMetacarpal,  bones.thumbProximal,      bones.thumbDistal]],
-      [HLM.INDEX,  [bones.indexProximal,    bones.indexIntermediate,  bones.indexDistal]],
-      [HLM.MIDDLE, [bones.middleProximal,   bones.middleIntermediate, bones.middleDistal]],
-      [HLM.RING,   [bones.ringProximal,     bones.ringIntermediate,   bones.ringDistal]],
-      [HLM.LITTLE, [bones.littleProximal,   bones.littleIntermediate, bones.littleDistal]],
+      [HLM.THUMB, [bones.thumbMetacarpal, bones.thumbProximal, bones.thumbDistal]],
+      [HLM.INDEX, [bones.indexProximal, bones.indexIntermediate, bones.indexDistal]],
+      [HLM.MIDDLE, [bones.middleProximal, bones.middleIntermediate, bones.middleDistal]],
+      [HLM.RING, [bones.ringProximal, bones.ringIntermediate, bones.ringDistal]],
+      [HLM.LITTLE, [bones.littleProximal, bones.littleIntermediate, bones.littleDistal]],
     ]
 
     for (const [lm, fingerBones] of chains) {
@@ -459,13 +470,13 @@ async function main(): Promise<void> {
         mat4.fromArray(txMatrix.data)
         euler.setFromRotationMatrix(mat4, 'YXZ')
         const hx = headFilters[0].filter(-euler.x, now)
-        const hy = headFilters[1].filter( euler.y, now)
+        const hy = headFilters[1].filter(euler.y, now)
         const hz = headFilters[2].filter(-euler.z, now)
         headBone.quaternion.setFromEuler(new THREE.Euler(hx, hy, hz, 'YXZ'))
         debugHead = {
           pitch: hx * RAD_TO_DEG,
-          yaw:   hy * RAD_TO_DEG,
-          roll:  hz * RAD_TO_DEG,
+          yaw: hy * RAD_TO_DEG,
+          roll: hz * RAD_TO_DEG,
         }
       }
 
@@ -476,12 +487,12 @@ async function main(): Promise<void> {
         // MediaPipe pose landmark indices
         const LSHO = 11, RSHO = 12, LELB = 13, RELB = 14, LWRI = 15, RWRI = 16
 
-        const lSho = filterLm(poseFilters.leftShoulder,  wlms[LSHO], now)
+        const lSho = filterLm(poseFilters.leftShoulder, wlms[LSHO], now)
         const rSho = filterLm(poseFilters.rightShoulder, wlms[RSHO], now)
-        const lElb = filterLm(poseFilters.leftElbow,     wlms[LELB], now)
-        const rElb = filterLm(poseFilters.rightElbow,    wlms[RELB], now)
-        const lWri = filterLm(poseFilters.leftWrist,     wlms[LWRI], now)
-        const rWri = filterLm(poseFilters.rightWrist,    wlms[RWRI], now)
+        const lElb = filterLm(poseFilters.leftElbow, wlms[LELB], now)
+        const rElb = filterLm(poseFilters.rightElbow, wlms[RELB], now)
+        const lWri = filterLm(poseFilters.leftWrist, wlms[LWRI], now)
+        const rWri = filterLm(poseFilters.rightWrist, wlms[RWRI], now)
 
         // Right arm
         if (armBones.right.upper && armBones.right.lower) {
@@ -533,7 +544,7 @@ async function main(): Promise<void> {
         const pts = wh.map((lm: { x: number; y: number; z: number }, i: number) => new THREE.Vector3(
           hf[i][0].filter(-lm.x, now),
           hf[i][1].filter(-lm.y, now),
-          hf[i][2].filter( lm.z, now),
+          hf[i][2].filter(lm.z, now),
         ))
 
         const ab = armBones[side]
