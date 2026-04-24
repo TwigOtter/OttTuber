@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm'
-import { FilesetResolver, FaceLandmarker } from '@mediapipe/tasks-vision'
+import { FilesetResolver, FaceLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision'
 
 // ---------------------------------------------------------------------------
 // One-euro filter (vendored)
@@ -95,10 +95,9 @@ async function loadVrm(path: string): Promise<VRM> {
 // MediaPipe face landmarker
 // ---------------------------------------------------------------------------
 
-async function loadFaceLandmarker(): Promise<FaceLandmarker> {
-  const vision = await FilesetResolver.forVisionTasks(
-    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-  )
+type VisionFileset = Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>
+
+async function loadFaceLandmarker(vision: VisionFileset): Promise<FaceLandmarker> {
   return FaceLandmarker.createFromOptions(vision, {
     baseOptions: {
       modelAssetPath:
@@ -109,6 +108,19 @@ async function loadFaceLandmarker(): Promise<FaceLandmarker> {
     outputFacialTransformationMatrixes: true,
     runningMode: 'VIDEO',
     numFaces: 1
+  })
+}
+
+async function loadPoseLandmarker(vision: VisionFileset): Promise<PoseLandmarker> {
+  return PoseLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath:
+        'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+      delegate: 'GPU'
+    },
+    runningMode: 'VIDEO',
+    numPoses: 1,
+    outputSegmentationMasks: false
   })
 }
 
@@ -160,9 +172,14 @@ async function main(): Promise<void> {
   // Config must resolve first — VRM path comes from it
   const config: AppConfig = (await window.electron.loadConfig()) ?? DEFAULT_CONFIG
 
-  const [vrm, faceLandmarker, video] = await Promise.all([
+  const vision = await FilesetResolver.forVisionTasks(
+    'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+  )
+
+  const [vrm, faceLandmarker, poseLandmarker, video] = await Promise.all([
     loadVrm(config.model.path),
-    loadFaceLandmarker(),
+    loadFaceLandmarker(vision),
+    loadPoseLandmarker(vision),
     openWebcam(config.webcam)
   ])
 
@@ -203,6 +220,50 @@ async function main(): Promise<void> {
   const mat4 = new THREE.Matrix4()
   const euler = new THREE.Euler()
 
+  const armBones = {
+    left:  {
+      upper: vrm.humanoid?.getNormalizedBoneNode('leftUpperArm'),
+      lower: vrm.humanoid?.getNormalizedBoneNode('leftLowerArm'),
+    },
+    right: {
+      upper: vrm.humanoid?.getNormalizedBoneNode('rightUpperArm'),
+      lower: vrm.humanoid?.getNormalizedBoneNode('rightLowerArm'),
+    },
+  }
+
+  // One-euro filter per world-landmark axis: [x, y, z]
+  const mkF = () => [new OneEuroFilter(2.0, 0.3), new OneEuroFilter(2.0, 0.3), new OneEuroFilter(2.0, 0.3)]
+  const poseFilters = {
+    leftShoulder:  mkF(), rightShoulder: mkF(),
+    leftElbow:     mkF(), rightElbow:    mkF(),
+    leftWrist:     mkF(), rightWrist:    mkF(),
+  }
+
+  // MediaPipe pose world space: +X toward person's left, +Y up, +Z toward camera.
+  // Three.js world space: +X right (person's right), +Y up, +Z toward camera.
+  // Flip X to convert.
+  const filterLm = (
+    f: ReturnType<typeof mkF>,
+    lm: { x: number; y: number; z: number },
+    t: number
+  ): THREE.Vector3 =>
+    new THREE.Vector3(
+      f[0].filter(-lm.x, t),
+      f[1].filter(-lm.y, t),
+      f[2].filter( lm.z, t)
+    )
+
+  // T-pose rest directions for setFromUnitVectors
+  const RIGHT = new THREE.Vector3(1, 0, 0)
+  const LEFT  = new THREE.Vector3(-1, 0, 0)
+
+  const cal = config.tracking.armCalibration
+  const poseScale = new THREE.Vector3(
+    cal?.poseScale?.x ?? 1,
+    cal?.poseScale?.y ?? 1,
+    cal?.poseScale?.z ?? 1,
+  )
+
   const clock = new THREE.Clock()
   let lastVideoTime = -1
 
@@ -213,7 +274,9 @@ async function main(): Promise<void> {
 
     if (video.currentTime !== lastVideoTime) {
       lastVideoTime = video.currentTime
-      const result = faceLandmarker.detectForVideo(video, Date.now())
+      const ts = video.currentTime * 1000
+      const result = faceLandmarker.detectForVideo(video, ts)
+      const poseResult = poseLandmarker.detectForVideo(video, ts + 1)
 
       const debugBlendshapes: DebugData['blendshapes'] = []
       let debugHead: DebugData['head'] = { pitch: 0, yaw: 0, roll: 0 }
@@ -270,7 +333,56 @@ async function main(): Promise<void> {
         }
       }
 
-      window.electron.sendDebugData({ detected, blendshapes: debugBlendshapes, head: debugHead })
+      // --- Arms (pose) ---
+      const debugArms: DebugData['arms'] = []
+      const wlms = poseResult.worldLandmarks[0]
+      if (wlms) {
+        // MediaPipe pose landmark indices
+        const LSHO = 11, RSHO = 12, LELB = 13, RELB = 14, LWRI = 15, RWRI = 16
+
+        const lSho = filterLm(poseFilters.leftShoulder,  wlms[LSHO], now)
+        const rSho = filterLm(poseFilters.rightShoulder, wlms[RSHO], now)
+        const lElb = filterLm(poseFilters.leftElbow,     wlms[LELB], now)
+        const rElb = filterLm(poseFilters.rightElbow,    wlms[RELB], now)
+        const lWri = filterLm(poseFilters.leftWrist,     wlms[LWRI], now)
+        const rWri = filterLm(poseFilters.rightWrist,    wlms[RWRI], now)
+
+        // Right arm
+        if (armBones.right.upper && armBones.right.lower) {
+          const upperDir = rElb.clone().sub(rSho).multiply(poseScale).normalize()
+          armBones.right.upper.quaternion.setFromUnitVectors(RIGHT, upperDir)
+          const lowerDir = rWri.clone().sub(rElb).multiply(poseScale).normalize()
+          const lowerLocal = lowerDir.applyQuaternion(armBones.right.upper.quaternion.clone().invert())
+          armBones.right.lower.quaternion.setFromUnitVectors(RIGHT, lowerLocal)
+          debugArms.push(
+            { name: 'R upper X', value: upperDir.x },
+            { name: 'R upper Y', value: upperDir.y },
+            { name: 'R upper Z', value: upperDir.z },
+            { name: 'R lower X', value: lowerLocal.x },
+            { name: 'R lower Y', value: lowerLocal.y },
+            { name: 'R lower Z', value: lowerLocal.z },
+          )
+        }
+
+        // Left arm
+        if (armBones.left.upper && armBones.left.lower) {
+          const upperDir = lElb.clone().sub(lSho).multiply(poseScale).normalize()
+          armBones.left.upper.quaternion.setFromUnitVectors(LEFT, upperDir)
+          const lowerDir = lWri.clone().sub(lElb).multiply(poseScale).normalize()
+          const lowerLocal = lowerDir.applyQuaternion(armBones.left.upper.quaternion.clone().invert())
+          armBones.left.lower.quaternion.setFromUnitVectors(LEFT, lowerLocal)
+          debugArms.push(
+            { name: 'L upper X', value: upperDir.x },
+            { name: 'L upper Y', value: upperDir.y },
+            { name: 'L upper Z', value: upperDir.z },
+            { name: 'L lower X', value: lowerLocal.x },
+            { name: 'L lower Y', value: lowerLocal.y },
+            { name: 'L lower Z', value: lowerLocal.z },
+          )
+        }
+      }
+
+      window.electron.sendDebugData({ detected, blendshapes: debugBlendshapes, head: debugHead, arms: debugArms })
     }
 
     vrm.update(delta)

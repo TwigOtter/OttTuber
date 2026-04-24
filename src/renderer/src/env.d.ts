@@ -21,6 +21,9 @@ interface AppConfig {
     blendshapeFilter: { minCutoff: number; beta: number }
     blendshapeFilterOverrides: Record<string, { minCutoff: number; beta: number }>
     headFilter: { minCutoff: number; beta: number }
+    armCalibration?: {
+      poseScale?: { x: number; y: number; z: number }
+    }
   }
 }
 
@@ -28,6 +31,7 @@ interface DebugData {
   detected: boolean
   blendshapes: Array<{ name: string; value: number }>
   head: { pitch: number; yaw: number; roll: number }
+  arms: Array<{ name: string; value: number }>
 }
 
 interface Window {

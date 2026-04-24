@@ -30,6 +30,9 @@
     "headFilter": {
       "minCutoff": 1.5,
       "beta": 0.1
+    },
+    "armCalibration": {
+      "poseScale": { "x": 1.0, "y": 1.0, "z": 1.0 }
     }
   }
 }
