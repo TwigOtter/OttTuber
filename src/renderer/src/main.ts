@@ -1,7 +1,7 @@
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { VRM, VRMLoaderPlugin } from '@pixiv/three-vrm'
-import { FilesetResolver, FaceLandmarker, PoseLandmarker } from '@mediapipe/tasks-vision'
+import { FilesetResolver, FaceLandmarker, PoseLandmarker, HandLandmarker } from '@mediapipe/tasks-vision'
 
 // ---------------------------------------------------------------------------
 // One-euro filter (vendored)
@@ -124,6 +124,18 @@ async function loadPoseLandmarker(vision: VisionFileset): Promise<PoseLandmarker
   })
 }
 
+async function loadHandLandmarker(vision: VisionFileset): Promise<HandLandmarker> {
+  return HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath:
+        'https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task',
+      delegate: 'GPU'
+    },
+    runningMode: 'VIDEO',
+    numHands: 2
+  })
+}
+
 // ---------------------------------------------------------------------------
 // Webcam
 // ---------------------------------------------------------------------------
@@ -176,10 +188,11 @@ async function main(): Promise<void> {
     'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
   )
 
-  const [vrm, faceLandmarker, poseLandmarker, video] = await Promise.all([
+  const [vrm, faceLandmarker, poseLandmarker, handLandmarker, video] = await Promise.all([
     loadVrm(config.model.path),
     loadFaceLandmarker(vision),
     loadPoseLandmarker(vision),
+    loadHandLandmarker(vision),
     openWebcam(config.webcam)
   ])
 
@@ -231,6 +244,53 @@ async function main(): Promise<void> {
     },
   }
 
+  const hb = (name: string) => vrm.humanoid?.getNormalizedBoneNode(name) ?? null
+  const handBones = {
+    left: {
+      wrist:              hb('leftHand'),
+      thumbMetacarpal:    hb('leftThumbMetacarpal'),
+      thumbProximal:      hb('leftThumbProximal'),
+      thumbDistal:        hb('leftThumbDistal'),
+      indexProximal:      hb('leftIndexProximal'),
+      indexIntermediate:  hb('leftIndexIntermediate'),
+      indexDistal:        hb('leftIndexDistal'),
+      middleProximal:     hb('leftMiddleProximal'),
+      middleIntermediate: hb('leftMiddleIntermediate'),
+      middleDistal:       hb('leftMiddleDistal'),
+      ringProximal:       hb('leftRingProximal'),
+      ringIntermediate:   hb('leftRingIntermediate'),
+      ringDistal:         hb('leftRingDistal'),
+      littleProximal:     hb('leftLittleProximal'),
+      littleIntermediate: hb('leftLittleIntermediate'),
+      littleDistal:       hb('leftLittleDistal'),
+    },
+    right: {
+      wrist:              hb('rightHand'),
+      thumbMetacarpal:    hb('rightThumbMetacarpal'),
+      thumbProximal:      hb('rightThumbProximal'),
+      thumbDistal:        hb('rightThumbDistal'),
+      indexProximal:      hb('rightIndexProximal'),
+      indexIntermediate:  hb('rightIndexIntermediate'),
+      indexDistal:        hb('rightIndexDistal'),
+      middleProximal:     hb('rightMiddleProximal'),
+      middleIntermediate: hb('rightMiddleIntermediate'),
+      middleDistal:       hb('rightMiddleDistal'),
+      ringProximal:       hb('rightRingProximal'),
+      ringIntermediate:   hb('rightRingIntermediate'),
+      ringDistal:         hb('rightRingDistal'),
+      littleProximal:     hb('rightLittleProximal'),
+      littleIntermediate: hb('rightLittleIntermediate'),
+      littleDistal:       hb('rightLittleDistal'),
+    },
+  }
+  type HandBones = typeof handBones.left
+
+  // 21 landmarks × 3 axes × 2 hands
+  const mkHandF = () => Array.from({ length: 21 }, () =>
+    [new OneEuroFilter(4.0, 0.5), new OneEuroFilter(4.0, 0.5), new OneEuroFilter(4.0, 0.5)]
+  )
+  const handFilters = { left: mkHandF(), right: mkHandF() }
+
   // One-euro filter per world-landmark axis: [x, y, z]
   const mkF = () => [new OneEuroFilter(2.0, 0.3), new OneEuroFilter(2.0, 0.3), new OneEuroFilter(2.0, 0.3)]
   const poseFilters = {
@@ -263,6 +323,75 @@ async function main(): Promise<void> {
     cal?.poseScale?.y ?? 1,
     cal?.poseScale?.z ?? 1,
   )
+
+  // Hand landmark indices
+  const HLM = {
+    WRIST: 0,
+    THUMB:  [1, 2, 3, 4],
+    INDEX:  [5, 6, 7, 8],
+    MIDDLE: [9, 10, 11, 12],
+    RING:   [13, 14, 15, 16],
+    LITTLE: [17, 18, 19, 20],
+  }
+
+  function applyHandPose(pts: THREE.Vector3[], side: 'left' | 'right', bones: HandBones, lowerArmWorldQuat: THREE.Quaternion): void {
+    const restDir = side === 'right' ? RIGHT.clone() : LEFT.clone()
+    const invLower = lowerArmWorldQuat.clone().invert()
+
+    // --- Wrist rotation (full 3-DOF: pitch+yaw via setFromUnitVectors, roll via twist) ---
+    const wristQuat = new THREE.Quaternion()
+    if (bones.wrist) {
+      const fingerDir = pts[HLM.MIDDLE[0]].clone().sub(pts[HLM.WRIST]).normalize()
+      const sideVec   = pts[HLM.INDEX[0]].clone().sub(pts[HLM.LITTLE[0]])
+      const handNorm  = new THREE.Vector3().crossVectors(fingerDir, sideVec).normalize()
+
+      // Step 1: align finger direction (pitch + yaw)
+      const fingerLocal = fingerDir.clone().applyQuaternion(invLower)
+      const q1 = new THREE.Quaternion().setFromUnitVectors(restDir, fingerLocal)
+
+      // Step 2: align palm normal (roll) — twist around the finger axis
+      const normLocal   = handNorm.clone().applyQuaternion(invLower)
+      const nominalNorm = new THREE.Vector3(0, 1, 0).applyQuaternion(q1)
+      const fd = fingerLocal.clone().normalize()
+      const nomPerp = nominalNorm.clone().addScaledVector(fd, -nominalNorm.dot(fd))
+      const actPerp = normLocal.clone().addScaledVector(fd, -normLocal.dot(fd))
+      if (nomPerp.lengthSq() > 1e-6 && actPerp.lengthSq() > 1e-6) {
+        const q2 = new THREE.Quaternion().setFromUnitVectors(nomPerp.normalize(), actPerp.normalize())
+        wristQuat.copy(q2.multiply(q1))
+      } else {
+        wristQuat.copy(q1)
+      }
+      bones.wrist.quaternion.copy(wristQuat)
+    }
+
+    // Hand world quat = lower arm world × wrist local
+    const handWorldQuat = lowerArmWorldQuat.clone().multiply(wristQuat)
+
+    // --- Finger chains: [landmark indices], [bones] ---
+    const chains: [number[], (THREE.Object3D | null)[]][] = [
+      [HLM.THUMB,  [bones.thumbMetacarpal,  bones.thumbProximal,      bones.thumbDistal]],
+      [HLM.INDEX,  [bones.indexProximal,    bones.indexIntermediate,  bones.indexDistal]],
+      [HLM.MIDDLE, [bones.middleProximal,   bones.middleIntermediate, bones.middleDistal]],
+      [HLM.RING,   [bones.ringProximal,     bones.ringIntermediate,   bones.ringDistal]],
+      [HLM.LITTLE, [bones.littleProximal,   bones.littleIntermediate, bones.littleDistal]],
+    ]
+
+    for (const [lm, fingerBones] of chains) {
+      let parentQuat = handWorldQuat.clone()
+      for (let i = 0; i < fingerBones.length; i++) {
+        const seg = pts[lm[i + 1]].clone().sub(pts[lm[i]])
+        if (seg.lengthSq() < 1e-8) { parentQuat = parentQuat.clone().multiply(new THREE.Quaternion()); continue }
+        const segLocal = seg.normalize().applyQuaternion(parentQuat.clone().invert())
+        const boneQuat = new THREE.Quaternion().setFromUnitVectors(restDir, segLocal)
+        fingerBones[i]?.quaternion.copy(boneQuat)
+        parentQuat = parentQuat.clone().multiply(boneQuat)
+      }
+    }
+  }
+
+  function resetHandBones(bones: HandBones): void {
+    for (const bone of Object.values(bones)) bone?.quaternion.identity()
+  }
 
   const clock = new THREE.Clock()
   let lastVideoTime = -1
@@ -380,6 +509,35 @@ async function main(): Promise<void> {
             { name: 'L lower Z', value: lowerLocal.z },
           )
         }
+      }
+
+      // --- Hands ---
+      const handResult = handLandmarker.detectForVideo(video, ts + 2)
+      const detectedSides = new Set<'left' | 'right'>()
+
+      for (let h = 0; h < handResult.worldLandmarks.length; h++) {
+        const categoryName = handResult.handednesses[h]?.[0]?.categoryName
+        if (!categoryName) continue
+        const side = categoryName === 'Left' ? 'left' : 'right'
+        detectedSides.add(side)
+
+        const wh = handResult.worldLandmarks[h]
+        const hf = handFilters[side]
+        const pts = wh.map((lm: { x: number; y: number; z: number }, i: number) => new THREE.Vector3(
+          hf[i][0].filter(-lm.x, now),
+          hf[i][1].filter(-lm.y, now),
+          hf[i][2].filter( lm.z, now),
+        ))
+
+        const ab = armBones[side]
+        if (ab.upper && ab.lower) {
+          const lowerArmWorldQuat = ab.upper.quaternion.clone().multiply(ab.lower.quaternion)
+          applyHandPose(pts, side, handBones[side], lowerArmWorldQuat)
+        }
+      }
+
+      for (const side of ['left', 'right'] as const) {
+        if (!detectedSides.has(side)) resetHandBones(handBones[side])
       }
 
       window.electron.sendDebugData({ detected, blendshapes: debugBlendshapes, head: debugHead, arms: debugArms })
