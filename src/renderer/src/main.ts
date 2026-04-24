@@ -369,6 +369,7 @@ async function main(): Promise<void> {
 	);
 	const armMin = cal?.minCutoff ?? 2.0;
 	const armBeta = cal?.beta ?? 0.3;
+	const FOREARM_ROLL_FRACTION = 0.6;
 
 	// One-euro filter per world-landmark axis: [x, y, z]
 	const mkF = () => [
@@ -433,12 +434,14 @@ async function main(): Promise<void> {
 		side: "left" | "right",
 		bones: HandBones,
 		lowerArmWorldQuat: THREE.Quaternion,
+		lowerArmBone: THREE.Object3D,
 	): void {
 		const restDir = side === "right" ? RIGHT.clone() : LEFT.clone();
 		const invLower = lowerArmWorldQuat.clone().invert();
 
 		// --- Wrist rotation (full 3-DOF: pitch+yaw via setFromUnitVectors, roll via twist) ---
 		const wristQuat = new THREE.Quaternion();
+		const fullWristQuat = new THREE.Quaternion(); // q2*q1, used for finger parent space
 		if (bones.wrist) {
 			const fingerDir = pts[HLM.MIDDLE[0]]
 				.clone()
@@ -472,15 +475,25 @@ async function main(): Promise<void> {
 					nomPerp.normalize(),
 					actPerp.normalize(),
 				);
-				wristQuat.copy(q2.multiply(q1));
+				// Split roll: FOREARM_ROLL_FRACTION goes to the lower arm bone so it
+				// visually twists with the hand; the remainder stays on the wrist bone.
+				// fullWristQuat (q2*q1) is preserved for finger parent-space so finger
+				// world positions are unaffected by the split.
+				const q2Forearm = new THREE.Quaternion().slerp(q2, FOREARM_ROLL_FRACTION);
+				const q2Wrist = q2Forearm.clone().invert().multiply(q2);
+				lowerArmBone.quaternion.multiply(q2Forearm);
+				fullWristQuat.copy(q2.clone().multiply(q1));
+				wristQuat.copy(q2Wrist.multiply(q1));
 			} else {
+				fullWristQuat.copy(q1);
 				wristQuat.copy(q1);
 			}
 			bones.wrist.quaternion.copy(wristQuat);
 		}
 
-		// Hand world quat = lower arm world × wrist local
-		const handWorldQuat = lowerArmWorldQuat.clone().multiply(wristQuat);
+		// Finger parent space uses the full wrist rotation so world positions are
+		// unchanged by the forearm/wrist roll split above.
+		const handWorldQuat = lowerArmWorldQuat.clone().multiply(fullWristQuat);
 
 		// --- Finger chains: [landmark indices], [bones] ---
 		const chains: [number[], (THREE.Object3D | null)[]][] = [
@@ -772,6 +785,7 @@ async function main(): Promise<void> {
 						side,
 						handBones[side],
 						lowerArmWorldQuat,
+						ab.lower,
 					);
 				}
 			}
