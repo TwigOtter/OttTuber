@@ -35,39 +35,39 @@ Edit `config.json` to tune tracking and appearance:
 
 ```json
 {
-  "camera": {
-    "position": [0, 0.75, 1.1],
-    "lookAt": [0, 0.70, 0],
-    "fov": 35
-  },
-  "webcam": {
-    "deviceLabel": null,
-    "deviceId": null
-  },
-  "model": {
-    "path": "VRMs/your-avatar.vrm",
-    "scale": 1.0,
-    "rotation": [0, 180, 0],
-    "mirror": true,
-  },
-  "tracking": {
-    "blendshapeAmplify": {
-      "eyeBlinkLeft": 2.0,
-      "eyeBlinkRight": 2.0
-    },
-    "blendshapeFilter": {
-      "minCutoff": 1.0,
-      "beta": 0.007
-    },
-    "blendshapeFilterOverrides": {
-      "eyeBlinkLeft": { "minCutoff": 10.0, "beta": 0.5 },
-      "eyeBlinkRight": { "minCutoff": 10.0, "beta": 0.5 }
-    },
-    "headFilter": {
-      "minCutoff": 1.5,
-      "beta": 0.1
-    }
-  }
+	"camera": {
+		"position": [0, 0.75, 1.1],
+		"lookAt": [0, 0.7, 0],
+		"fov": 35
+	},
+	"webcam": {
+		"deviceLabel": null,
+		"deviceId": null
+	},
+	"model": {
+		"path": "VRMs/your-avatar.vrm",
+		"scale": 1.0,
+		"rotation": [0, 180, 0],
+		"mirror": true
+	},
+	"tracking": {
+		"blendshapeAmplify": {
+			"eyeBlinkLeft": 2.0,
+			"eyeBlinkRight": 2.0
+		},
+		"blendshapeFilter": {
+			"minCutoff": 1.0,
+			"beta": 0.007
+		},
+		"blendshapeFilterOverrides": {
+			"eyeBlinkLeft": { "minCutoff": 10.0, "beta": 0.5 },
+			"eyeBlinkRight": { "minCutoff": 10.0, "beta": 0.5 }
+		},
+		"headFilter": {
+			"minCutoff": 1.5,
+			"beta": 0.1
+		}
+	}
 }
 ```
 
@@ -144,16 +144,19 @@ OttTuber is pre-beta and under active development — many things are incomplete
 ## Troubleshooting
 
 ### Avatar doesn't appear
+
 - Check that the VRM file path in `config.json` is correct
 - Verify the file exists in the working directory
 - Check the browser console (DevTools: Ctrl+Shift+I)
 
 ### Blinking doesn't work
+
 - Increase `blendshapeAmplify.eyeBlinkLeft/Right` (try 2.5–3.0)
 - Check that your avatar has ARKit blendshapes (many VRM 1.x avatars do)
 - If using a standard VRM (no custom ARKit expressions), the fallback maps `aa` → `jawOpen`
 
 ### Avatar faces the wrong direction
+
 - Adjust `model.rotation.y` in `config.json` (180° is typical, try 0° or 360°)
 
 ### Wrong camera is being used / want to select a specific webcam
@@ -162,18 +165,21 @@ The `webcam.deviceLabel` config field lets you target a specific camera by name.
 
 1. Temporarily enable DevTools by adding `win.webContents.openDevTools()` to `createWindow()` in `src/main/index.ts`, then run `npm run build && npm start`
 2. In the DevTools **Console** tab, run:
-   ```js
-   navigator.mediaDevices.enumerateDevices().then(d => console.table(d.filter(x => x.kind === 'videoinput')))
-   ```
+    ```js
+    navigator.mediaDevices
+    	.enumerateDevices()
+    	.then((d) => console.table(d.filter((x) => x.kind === "videoinput")));
+    ```
 3. Find your camera in the table. Copy its **label** into `config.json`:
-   ```json
-   "webcam": { "deviceLabel": "Logitech BRIO", "deviceId": null }
-   ```
+    ```json
+    "webcam": { "deviceLabel": "Logitech BRIO", "deviceId": null }
+    ```
 4. Remove the `openDevTools()` line and rebuild.
 
 Alternatively, copy the **deviceId** into `webcam.deviceId` instead — useful if two devices share the same label. Note that device IDs can change across OS reinstalls or USB reconnects, so label matching is more reliable long-term.
 
 ### Tracking feels laggy
+
 - Increase `blendshapeFilter.minCutoff` and `headFilter.minCutoff` (higher = less smoothing)
 - Lower `beta` values (less responsive to velocity, more consistent)
 

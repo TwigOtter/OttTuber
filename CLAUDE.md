@@ -51,6 +51,7 @@ VRMs/                — avatar files (gitignored, not committed)
 ## Avatar notes
 
 Test avatar: `Twig-dotter-ARKit.vrm` (0.86 m tall otter).
+
 - Has all 52 ARKit blendshapes as direct custom expressions — no lookup table needed
 - Needs `vrm.scene.rotation.y = Math.PI` to face the camera
 - Camera framing for this avatar: `position(0, 0.75, 0.8)`, `lookAt(0, 0.65, 0)`, FOV 35
@@ -64,4 +65,4 @@ Test avatar: `Twig-dotter-ARKit.vrm` (0.86 m tall otter).
   and load local VRM files; this is intentional for a local-only app
 - The `electron` npm package correctly installs in node_modules but its `index.js` just
   returns the binary path — `require('electron')` only returns the real API when running
-  *inside* Electron with ELECTRON_RUN_AS_NODE unset
+  _inside_ Electron with ELECTRON_RUN_AS_NODE unset

@@ -37,10 +37,10 @@ interface DebugData {
 }
 
 interface Window {
-  electron: {
-    loadVrm(filename: string): Promise<ArrayBuffer>
-    loadConfig(): Promise<AppConfig | null>
-    sendDebugData(data: DebugData): void
-    onDebugData(callback: (data: DebugData) => void): void
-  }
+	electron: {
+		loadVrm(filename: string): Promise<ArrayBuffer>;
+		loadConfig(): Promise<AppConfig | null>;
+		sendDebugData(data: DebugData): void;
+		onDebugData(callback: (data: DebugData) => void): void;
+	};
 }
