@@ -29,6 +29,7 @@ interface AppConfig {
 			minCutoff?: number;
 			beta?: number;
 		};
+		handFilter?: { minCutoff?: number; beta?: number };
 	};
 }
 
