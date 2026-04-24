@@ -235,6 +235,7 @@ const DEFAULT_CONFIG: AppConfig = {
 		},
 		headFilter: { minCutoff: 1.5, beta: 0.1 },
 		armCalibration: { minCutoff: 1.0, beta: 0.01 },
+		handFilter: { minCutoff: 4.0, beta: 0.5 },
 	},
 };
 
@@ -349,11 +350,13 @@ async function main(): Promise<void> {
 	type HandBones = typeof handBones.left;
 
 	// 21 landmarks × 3 axes × 2 hands
+	const hfMinCutoff = config.tracking.handFilter?.minCutoff ?? 4.0;
+	const hfBeta = config.tracking.handFilter?.beta ?? 0.5;
 	const mkHandF = () =>
 		Array.from({ length: 21 }, () => [
-			new OneEuroFilter(4.0, 0.5),
-			new OneEuroFilter(4.0, 0.5),
-			new OneEuroFilter(4.0, 0.5),
+			new OneEuroFilter(hfMinCutoff, hfBeta),
+			new OneEuroFilter(hfMinCutoff, hfBeta),
+			new OneEuroFilter(hfMinCutoff, hfBeta),
 		]);
 	const handFilters = { left: mkHandF(), right: mkHandF() };
 
@@ -555,10 +558,6 @@ async function main(): Promise<void> {
 				parentQuat = parentQuat.clone().multiply(boneQuat);
 			}
 		}
-	}
-
-	function resetHandBones(bones: HandBones): void {
-		for (const bone of Object.values(bones)) bone?.quaternion.identity();
 	}
 
 	const clock = new THREE.Clock();
@@ -791,10 +790,6 @@ async function main(): Promise<void> {
 						ab.lower,
 					);
 				}
-			}
-
-			for (const side of ["left", "right"] as const) {
-				if (!detectedSides.has(side)) resetHandBones(handBones[side]);
 			}
 
 			window.electron.sendDebugData({
