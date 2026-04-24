@@ -1,6 +1,11 @@
-import tseslint from 'typescript-eslint';
+import { defineConfig } from "eslint/config";
+import tseslint from "typescript-eslint";
+import prettier from "eslint-plugin-prettier/recommended";
 
-export default tseslint.config(
-  tseslint.configs.recommended,
-  { ignores: ['out/**', 'scripts/**'] },
-);
+export default defineConfig([
+	tseslint.configs.recommended,
+	prettier,
+	{
+		ignores: ["out/**", "scripts/**"],
+	},
+]);
