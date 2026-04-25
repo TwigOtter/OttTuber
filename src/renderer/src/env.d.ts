@@ -46,6 +46,7 @@ interface DebugData {
 	blendshapes: Array<{ name: string; value: number }>;
 	head: { pitch: number; yaw: number; roll: number };
 	arms: Array<{ name: string; value: number }>;
+	audio?: Array<{ name: string; value: number }>;
 }
 
 interface Window {

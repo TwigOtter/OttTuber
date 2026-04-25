@@ -88,6 +88,8 @@ interface AudioVisemes {
 	ou: number;
 	ee: number;
 	ih: number;
+	// band energies normalized to silence threshold, for debug display
+	bands: [number, number, number, number];
 }
 
 async function openMic(
@@ -143,7 +145,16 @@ function computeAudioVisemes(
 		smoothstep(threshold, threshold * 4, rms * (cfg?.sensitivity ?? 1)) *
 		(cfg?.blendWeight ?? 1);
 
-	if (blend < 0.001) return { blend: 0, aa: 0, oh: 0, ou: 0, ee: 0, ih: 0 };
+	// Normalize bands to threshold scale so 1.0 = "clearly speaking"
+	const tScale = 1 / (threshold * 4);
+	const bands: [number, number, number, number] = [
+		Math.min(1, bLow * tScale),
+		Math.min(1, bMidLow * tScale),
+		Math.min(1, bMid * tScale),
+		Math.min(1, bMidHigh * tScale),
+	];
+
+	if (blend < 0.001) return { blend: 0, aa: 0, oh: 0, ou: 0, ee: 0, ih: 0, bands };
 
 	const raw = {
 		aa: bMid,
@@ -162,6 +173,7 @@ function computeAudioVisemes(
 
 	return {
 		blend,
+		bands,
 		aa: filt("aa", raw.aa),
 		oh: filt("oh", raw.oh),
 		ou: filt("ou", raw.ou),
@@ -745,6 +757,11 @@ async function main(): Promise<void> {
 				result.facialTransformationMatrixes?.[0]
 			);
 
+			// Audio visemes: computed once per video frame regardless of face detection
+			const audioVisemes = audioState
+				? computeAudioVisemes(audioState, config.audio, now)
+				: null;
+
 			// --- Blendshapes ---
 			const shapes = result.faceBlendshapes?.[0]?.categories;
 			const em = vrm.expressionManager;
@@ -802,11 +819,9 @@ async function main(): Promise<void> {
 					}
 				}
 
-				// Audio blend: override mouth shapes with mic-derived visemes
-				if (audioState) {
-					const v = computeAudioVisemes(audioState, config.audio, now);
-					if (v.blend > 0) applyAudioBlend(em, v, useARKit);
-				}
+					// Audio blend: override mouth shapes with mic-derived visemes
+				if (audioVisemes && audioVisemes.blend > 0)
+					applyAudioBlend(em, audioVisemes, useARKit);
 
 				em.update();
 			}
@@ -968,6 +983,20 @@ async function main(): Promise<void> {
 				blendshapes: debugBlendshapes,
 				head: debugHead,
 				arms: debugArms,
+				audio: audioVisemes
+					? [
+							{ name: "blend", value: audioVisemes.blend },
+							{ name: "80–350 Hz", value: audioVisemes.bands[0] },
+							{ name: "350–800 Hz", value: audioVisemes.bands[1] },
+							{ name: "800–1500 Hz", value: audioVisemes.bands[2] },
+							{ name: "1500–3k Hz", value: audioVisemes.bands[3] },
+							{ name: "aa", value: audioVisemes.aa },
+							{ name: "oh", value: audioVisemes.oh },
+							{ name: "ou", value: audioVisemes.ou },
+							{ name: "ee", value: audioVisemes.ee },
+							{ name: "ih", value: audioVisemes.ih },
+						]
+					: undefined,
 			});
 		}
 
