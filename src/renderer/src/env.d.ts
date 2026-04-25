@@ -10,6 +10,14 @@ interface AppConfig {
 		deviceLabel?: string | null;
 		deviceId?: string | null;
 	};
+	audio?: {
+		enabled?: boolean;
+		deviceId?: string | null;
+		sensitivity?: number;
+		silenceThreshold?: number;
+		blendWeight?: number;
+		filter?: { minCutoff: number; beta: number };
+	};
 	model: {
 		path: string;
 		scale: number;
@@ -38,6 +46,7 @@ interface DebugData {
 	blendshapes: Array<{ name: string; value: number }>;
 	head: { pitch: number; yaw: number; roll: number };
 	arms: Array<{ name: string; value: number }>;
+	audio?: Array<{ name: string; value: number }>;
 }
 
 interface Window {

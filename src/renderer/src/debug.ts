@@ -17,6 +17,7 @@ interface DebugData {
 	blendshapes: DebugBlendshape[];
 	head: DebugHead;
 	arms: Array<{ name: string; value: number }>;
+	audio?: Array<{ name: string; value: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,6 +121,9 @@ style.textContent = `
   /* head rotation bar uses an orange tint to distinguish it */
   .bar.head { background: #f0883e; }
 
+  /* audio band / viseme bars use green */
+  .bar.audio { background: #3fb950; }
+
   .val {
     width: 52px;
     flex-shrink: 0;
@@ -159,7 +163,7 @@ const rowCache = new Map<string, RowElements>();
 function getOrCreateRow(
 	container: HTMLElement,
 	key: string,
-	isHead: boolean,
+	variant: "default" | "head" | "audio",
 ): RowElements {
 	if (rowCache.has(key)) return rowCache.get(key)!;
 
@@ -172,10 +176,13 @@ function getOrCreateRow(
 	name.title = key;
 
 	const track = document.createElement("div");
-	track.className = isHead ? "track centered" : "track";
+	track.className = variant === "head" ? "track centered" : "track";
 
 	const bar = document.createElement("div");
-	bar.className = isHead ? "bar head" : "bar";
+	bar.className =
+		variant === "head" ? "bar head"
+		: variant === "audio" ? "bar audio"
+		: "bar";
 	track.appendChild(bar);
 
 	const val = document.createElement("span");
@@ -199,7 +206,7 @@ function updateBlendshapeRow(
 	name: string,
 	value: number,
 ): void {
-	const { bar, val } = getOrCreateRow(container, name, false);
+	const { bar, val } = getOrCreateRow(container, name, "default");
 	bar.style.left = "0";
 	bar.style.width = `${Math.max(0, Math.min(1, value)) * 100}%`;
 	bar.style.right = "";
@@ -212,7 +219,7 @@ function updateHeadRow(
 	label: string,
 	degrees: number,
 ): void {
-	const { bar, val } = getOrCreateRow(container, label, true);
+	const { bar, val } = getOrCreateRow(container, label, "head");
 	const norm = Math.max(-1, Math.min(1, degrees / 90));
 	if (norm >= 0) {
 		bar.style.left = "50%";
@@ -224,6 +231,19 @@ function updateHeadRow(
 		bar.style.left = "";
 	}
 	val.textContent = `${degrees >= 0 ? "+" : ""}${degrees.toFixed(1)}°`;
+}
+
+/** Audio band / viseme bar: 0 → 1, left-anchored, green */
+function updateAudioRow(
+	container: HTMLElement,
+	name: string,
+	value: number,
+): void {
+	const { bar, val } = getOrCreateRow(container, name, "audio");
+	bar.style.left = "0";
+	bar.style.width = `${Math.max(0, Math.min(1, value)) * 100}%`;
+	bar.style.right = "";
+	val.textContent = value.toFixed(3);
 }
 
 function addSectionLabel(container: HTMLElement, text: string): void {
@@ -240,12 +260,19 @@ function addSectionLabel(container: HTMLElement, text: string): void {
 let headSection: HTMLElement | null = null;
 let armsSection: HTMLElement | null = null;
 let bsSection: HTMLElement | null = null;
+let audioSection: HTMLElement | null = null;
 
 function ensureSections(
 	hasHead: boolean,
 	hasArms: boolean,
 	hasBlendshapes: boolean,
+	hasAudio: boolean,
 ): void {
+	if (hasAudio && !audioSection) {
+		addSectionLabel(scrollContainer, "Audio");
+		audioSection = document.createElement("div");
+		scrollContainer.appendChild(audioSection);
+	}
 	if (hasHead && !headSection) {
 		addSectionLabel(scrollContainer, "Head Rotation");
 		headSection = document.createElement("div");
@@ -279,7 +306,18 @@ window.electron.onDebugData((data: DebugData) => {
 
 	const hasHead =
 		data.head.pitch !== 0 || data.head.yaw !== 0 || data.head.roll !== 0;
-	ensureSections(hasHead, data.arms.length > 0, data.blendshapes.length > 0);
+	ensureSections(
+		hasHead,
+		data.arms.length > 0,
+		data.blendshapes.length > 0,
+		!!data.audio?.length,
+	);
+
+	if (audioSection && data.audio) {
+		for (const entry of data.audio) {
+			updateAudioRow(audioSection, entry.name, entry.value);
+		}
+	}
 
 	if (headSection) {
 		updateHeadRow(headSection, "pitch", data.head.pitch);

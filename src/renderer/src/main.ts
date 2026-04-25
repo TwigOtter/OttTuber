@@ -1,6 +1,11 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import { VRM, VRMLoaderPlugin, VRMHumanBoneName } from "@pixiv/three-vrm";
+import {
+	VRM,
+	VRMLoaderPlugin,
+	VRMHumanBoneName,
+	VRMExpressionManager,
+} from "@pixiv/three-vrm";
 import {
 	FilesetResolver,
 	FaceLandmarker,
@@ -44,6 +49,169 @@ class OneEuroFilter {
 		this.x = this.x! + this.alpha(cutoff, dt) * (value - this.x!);
 		this.t = timestamp;
 		return this.x!;
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Audio viseme analyser
+// ---------------------------------------------------------------------------
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+	const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+	return t * t * (3 - 2 * t);
+}
+
+function bandAvg(
+	data: Float32Array,
+	loHz: number,
+	hiHz: number,
+	binHz: number,
+): number {
+	const lo = Math.max(0, Math.floor(loHz / binHz));
+	const hi = Math.min(Math.floor(hiHz / binHz), data.length - 1);
+	if (hi < lo) return 0;
+	let sum = 0;
+	for (let i = lo; i <= hi; i++) sum += Math.pow(10, data[i] / 20);
+	return sum / (hi - lo + 1);
+}
+
+interface AudioState {
+	analyser: AnalyserNode;
+	freqData: Float32Array;
+	filters: Map<string, OneEuroFilter>;
+}
+
+interface AudioVisemes {
+	blend: number;
+	aa: number;
+	oh: number;
+	ou: number;
+	ee: number;
+	ih: number;
+	// band energies normalized to silence threshold, for debug display
+	bands: [number, number, number, number];
+}
+
+async function openMic(
+	audio: AppConfig["audio"],
+): Promise<AudioState | null> {
+	if (audio?.enabled === false) return null;
+	try {
+		let constraint: MediaTrackConstraints | boolean = true;
+		if (audio?.deviceId)
+			constraint = { deviceId: { exact: audio.deviceId } };
+		const stream = await navigator.mediaDevices.getUserMedia({
+			audio: constraint,
+			video: false,
+		});
+		const ctx = new AudioContext();
+		const source = ctx.createMediaStreamSource(stream);
+		const analyser = ctx.createAnalyser();
+		analyser.fftSize = 2048;
+		analyser.smoothingTimeConstant = 0.6;
+		source.connect(analyser);
+		// intentionally not connected to ctx.destination — no echo
+		return {
+			analyser,
+			freqData: new Float32Array(analyser.frequencyBinCount),
+			filters: new Map(),
+		};
+	} catch (e) {
+		console.warn("[audio] mic open failed:", e);
+		return null;
+	}
+}
+
+function computeAudioVisemes(
+	state: AudioState,
+	cfg: AppConfig["audio"],
+	now: number,
+): AudioVisemes {
+	state.analyser.getFloatFrequencyData(state.freqData);
+	const binHz = state.analyser.context.sampleRate / state.analyser.fftSize;
+	const d = state.freqData;
+
+	// Four bands tuned to vocal formant regions (F1 / F2)
+	const bLow = bandAvg(d, 80, 350, binHz); // fundamental / close-vowel F1
+	const bMidLow = bandAvg(d, 350, 800, binHz); // F1 mid-vowels (oh, ou)
+	const bMid = bandAvg(d, 800, 1500, binHz); // F1 open-vowels (aa)
+	const bMidHigh = bandAvg(d, 1500, 3000, binHz); // F2 front-vowels (ee, ih)
+
+	const rms = Math.sqrt(
+		(bLow ** 2 + bMidLow ** 2 + bMid ** 2 + bMidHigh ** 2) / 4,
+	);
+	const threshold = cfg?.silenceThreshold ?? 0.015;
+	const blend =
+		smoothstep(threshold, threshold * 4, rms * (cfg?.sensitivity ?? 1)) *
+		(cfg?.blendWeight ?? 1);
+
+	// Normalize bands to threshold scale so 1.0 = "clearly speaking"
+	const tScale = 1 / (threshold * 4);
+	const bands: [number, number, number, number] = [
+		Math.min(1, bLow * tScale),
+		Math.min(1, bMidLow * tScale),
+		Math.min(1, bMid * tScale),
+		Math.min(1, bMidHigh * tScale),
+	];
+
+	if (blend < 0.001) return { blend: 0, aa: 0, oh: 0, ou: 0, ee: 0, ih: 0, bands };
+
+	const raw = {
+		aa: bMid,
+		oh: bMidLow,
+		ou: bLow,
+		ee: bMidHigh * 1.1,
+		ih: bMidHigh * 0.6 + bMidLow * 0.2,
+	};
+	const peak = Math.max(...Object.values(raw), 1e-5);
+	const { minCutoff = 6.0, beta = 0.3 } = cfg?.filter ?? {};
+	const filt = (name: string, v: number): number => {
+		if (!state.filters.has(name))
+			state.filters.set(name, new OneEuroFilter(minCutoff, beta));
+		return state.filters.get(name)!.filter(Math.sqrt(v / peak), now);
+	};
+
+	return {
+		blend,
+		bands,
+		aa: filt("aa", raw.aa),
+		oh: filt("oh", raw.oh),
+		ou: filt("ou", raw.ou),
+		ee: filt("ee", raw.ee),
+		ih: filt("ih", raw.ih),
+	};
+}
+
+function applyAudioBlend(
+	em: VRMExpressionManager,
+	v: AudioVisemes,
+	useARKit: boolean,
+): void {
+	const over = (name: string, target: number): void => {
+		const cur = em.getValue(name);
+		if (cur === undefined) return;
+		em.setValue(
+			name,
+			Math.max(0, Math.min(1, cur + (target - cur) * v.blend)),
+		);
+	};
+
+	if (useARKit) {
+		over(
+			"jawOpen",
+			v.aa * 0.85 + v.oh * 0.55 + v.ou * 0.2 + v.ee * 0.2 + v.ih * 0.15,
+		);
+		over("mouthFunnel", v.oh * 0.7 + v.ou * 0.2);
+		over("mouthPucker", v.ou * 0.85);
+		over("mouthStretchLeft", v.ee * 0.8 + v.ih * 0.4);
+		over("mouthStretchRight", v.ee * 0.8 + v.ih * 0.4);
+		over("mouthClose", 0);
+	} else {
+		over("aa", v.aa);
+		over("oh", v.oh);
+		over("ou", v.ou);
+		over("ee", v.ee);
+		over("ih", v.ih);
 	}
 }
 
@@ -220,6 +388,13 @@ async function openWebcam(
 
 const DEFAULT_CONFIG: AppConfig = {
 	camera: { position: [0, 0.75, 1.1], lookAt: [0, 0.6, 0], fov: 35 },
+	audio: {
+		enabled: true,
+		sensitivity: 1.0,
+		silenceThreshold: 0.015,
+		blendWeight: 1.0,
+		filter: { minCutoff: 6.0, beta: 0.3 },
+	},
 	model: {
 		path: "VRMs/Twig-dotter-ARKit.vrm",
 		scale: 1.0,
@@ -250,13 +425,14 @@ async function main(): Promise<void> {
 		"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
 	);
 
-	const [vrm, faceLandmarker, poseLandmarker, handLandmarker, video] =
+	const [vrm, faceLandmarker, poseLandmarker, handLandmarker, video, audioState] =
 		await Promise.all([
 			loadVrm(config.model.path),
 			loadFaceLandmarker(vision),
 			loadPoseLandmarker(vision),
 			loadHandLandmarker(vision),
 			openWebcam(config.webcam),
+			openMic(config.audio),
 		]);
 
 	// Apply camera from config
@@ -581,6 +757,11 @@ async function main(): Promise<void> {
 				result.facialTransformationMatrixes?.[0]
 			);
 
+			// Audio visemes: computed once per video frame regardless of face detection
+			const audioVisemes = audioState
+				? computeAudioVisemes(audioState, config.audio, now)
+				: null;
+
 			// --- Blendshapes ---
 			const shapes = result.faceBlendshapes?.[0]?.categories;
 			const em = vrm.expressionManager;
@@ -637,6 +818,11 @@ async function main(): Promise<void> {
 						});
 					}
 				}
+
+					// Audio blend: override mouth shapes with mic-derived visemes
+				if (audioVisemes && audioVisemes.blend > 0)
+					applyAudioBlend(em, audioVisemes, useARKit);
+
 				em.update();
 			}
 
@@ -797,6 +983,20 @@ async function main(): Promise<void> {
 				blendshapes: debugBlendshapes,
 				head: debugHead,
 				arms: debugArms,
+				audio: audioVisemes
+					? [
+							{ name: "blend", value: audioVisemes.blend },
+							{ name: "80–350 Hz", value: audioVisemes.bands[0] },
+							{ name: "350–800 Hz", value: audioVisemes.bands[1] },
+							{ name: "800–1500 Hz", value: audioVisemes.bands[2] },
+							{ name: "1500–3k Hz", value: audioVisemes.bands[3] },
+							{ name: "aa", value: audioVisemes.aa },
+							{ name: "oh", value: audioVisemes.oh },
+							{ name: "ou", value: audioVisemes.ou },
+							{ name: "ee", value: audioVisemes.ee },
+							{ name: "ih", value: audioVisemes.ih },
+						]
+					: undefined,
 			});
 		}
 

@@ -214,19 +214,27 @@ Both stored as JSON in Electron's `userData` directory.
 - Head rotation working
 - _Success criteria:_ avatar's face is clearly expressive and recognizably mirroring the user
 
-### M3: Hands
+### M3: Audio visemes
+
+- Microphone captured via Web Audio API; FFT frequency bands mapped to F1/F2 vocal formant regions
+- Five vowel visemes (aa, oh, ou, ee, ih) derived from band energy ratios and blended on top of video-based mouth blendshapes
+- Silence gate (energy threshold) crossfades smoothly between video-only and audio-driven mouth; one-euro filtering on all viseme weights
+- Config: `audio.enabled`, `audio.deviceId`, `audio.sensitivity`, `audio.silenceThreshold`, `audio.blendWeight`, `audio.filter`
+- _Success criteria:_ mouth movement is visibly in sync with speech during a live stream; video tracking handles emotion/brows while audio handles articulation
+
+### M4: Hands
 
 - Hand tracking active, wrist + fingers driven from MediaPipe
 - _Success criteria:_ can wave at chat
 
-### M4: Usable for an actual stream
+### M5: Usable for an actual stream
 
-- Settings UI for webcam selection, avatar loading, smoothing tuning
+- Settings UI for webcam/audio selection, avatar loading, smoothing tuning
 - Persisted config
 - Tested under real streaming load alongside OBS + a game
 - _Success criteria:_ can use it on a stream
 
-### M5 (stretch): The nice-to-haves
+### M6 (stretch): The nice-to-haves
 
 - Calibration routine
 - Hotkey support
