@@ -13,7 +13,7 @@ See DESIGN.md for full architecture and milestone definitions.
 
 ## Current milestone
 
-**M2 complete** (2026-04-24): Full 52 blendshapes + one-euro smoothing + head rotation. Face is expressively mirroring the user. Config-driven setup. See DESIGN.md §7 for M3–M5.
+**M3 in progress**: Arm tracking (upper/lower), hand tracking (wrist + 16 finger joints), and audio-driven mouth responsiveness (amplitude loosens filter + boosts scores). See DESIGN.md §7 for remaining M3 items and M4–M5.
 
 ## Dev workflow
 

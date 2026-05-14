@@ -13,12 +13,6 @@ interface AppConfig {
 	audio?: {
 		enabled?: boolean;
 		deviceId?: string | null;
-		sensitivity?: number;
-		silenceThreshold?: number;
-		blendWeight?: number;
-		bandDecay?: number;
-		blendDecay?: number;
-		filter?: { minCutoff: number; beta: number };
 	};
 	model: {
 		path: string;
@@ -40,6 +34,17 @@ interface AppConfig {
 			beta?: number;
 		};
 		handFilter?: { minCutoff?: number; beta?: number };
+		/** Dynamic mouth-filter modulation driven by mic amplitude. */
+		mouthFilter?: {
+			/** minCutoff used when silent (defaults to blendshapeFilter.minCutoff). */
+			minCutoffSilent?: number;
+			/** minCutoff used at peak amplitude — higher = more responsive when talking. */
+			minCutoffTalking?: number;
+			/** RMS amplitude below which the mic is treated as silent. */
+			noiseFloor?: number;
+			/** Multiplier applied to raw mouth scores: value *= 1 + amplitude * scale. Default 10. */
+			amplitudeScale?: number;
+		};
 	};
 }
 

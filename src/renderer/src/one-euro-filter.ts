@@ -4,7 +4,7 @@
  * Vendored from https://gery.casiez.net/1euro/
  */
 export class OneEuroFilter {
-	private minCutoff: number;
+	minCutoff: number;
 	private beta: number;
 	private dCutoff: number;
 	private x: number | null = null;

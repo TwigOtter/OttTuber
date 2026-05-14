@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { VRMHumanBoneName } from "@pixiv/three-vrm";
 import { FilesetResolver } from "@mediapipe/tasks-vision";
 import { OneEuroFilter } from "./one-euro-filter";
-import { openMic, computeAudioVisemes, applyAudioBlend } from "./audio";
+import { openMic, getMicAmplitude } from "./audio";
 import { loadFaceLandmarker, loadPoseLandmarker, loadHandLandmarker } from "./landmarkers";
 import { loadVrm, openWebcam } from "./loaders";
 import { RIGHT, LEFT, HandBoneSet, buildHLM, applyHandPose } from "./hand-pose";
@@ -61,13 +61,7 @@ const STANDARD_VRM_MAP: Record<string, [string, number][]> = {
 /** Default config values used when no config.json is present on disk. */
 const DEFAULT_CONFIG: AppConfig = {
 	camera: { position: [0, 0.75, 1.1], lookAt: [0, 0.6, 0], fov: 35 },
-	audio: {
-		enabled: true,
-		sensitivity: 1.0,
-		silenceThreshold: 0.015,
-		blendWeight: 1.0,
-		filter: { minCutoff: 6.0, beta: 0.3 },
-	},
+	audio: { enabled: true },
 	model: {
 		path: "VRMs/Twig-dotter-ARKit.vrm",
 		scale: 1.0,
@@ -256,6 +250,16 @@ async function main(): Promise<void> {
 		handBones.left.littleProximal === null;
 	const hlm = buildHLM(hasRingFinger);
 
+	/** Returns true for blendshape names that control mouth/jaw movement. */
+	const MOUTH_BLENDSHAPES = new Set(["aa", "ih", "ou", "ee", "oh"]);
+	function isMouthBlendshape(name: string): boolean {
+		return (
+			name.startsWith("mouth") ||
+			name.startsWith("jaw") ||
+			MOUTH_BLENDSHAPES.has(name)
+		);
+	}
+
 	const clock = new THREE.Clock();
 	let lastVideoTime = -1;
 
@@ -278,10 +282,15 @@ async function main(): Promise<void> {
 				faceResult.facialTransformationMatrixes?.[0]
 			);
 
-			// Audio visemes: computed once per video frame regardless of face detection
-			const audioVisemes = audioState
-				? computeAudioVisemes(audioState, config.audio, now)
-				: null;
+			// Mic amplitude drives mouth-filter responsiveness: loud = looser filter.
+			const micAmp = audioState ? getMicAmplitude(audioState) : 0;
+			const mouthCfg = config.tracking.mouthFilter;
+			const noiseFloor = mouthCfg?.noiseFloor ?? 0.01;
+			const minCutoffSilent = mouthCfg?.minCutoffSilent ?? bsMin;
+			const minCutoffTalking = mouthCfg?.minCutoffTalking ?? 8.0;
+			const amplitudeScale = mouthCfg?.amplitudeScale ?? 2;
+			// Normalise amplitude above the noise floor to a 0–1 drive value.
+			const mouthDrive = Math.min(1, Math.max(0, micAmp - noiseFloor) / (0.1 - noiseFloor));
 
 			// --- Blendshapes ---
 			const shapes = faceResult.faceBlendshapes?.[0]?.categories;
@@ -293,7 +302,10 @@ async function main(): Promise<void> {
 						const name = shape.categoryName;
 						const amplify =
 							config.tracking.blendshapeAmplify[name] ?? 1;
-						const raw = Math.min(1, shape.score * amplify);
+						const baseRaw = Math.min(1, shape.score * amplify);
+						const raw = isMouthBlendshape(name)
+							? Math.min(1, baseRaw * (1 + micAmp * amplitudeScale))
+							: baseRaw;
 						if (!bsFilters.has(name)) {
 							const p = bsOverrides[name] ?? {
 								minCutoff: bsMin,
@@ -304,7 +316,14 @@ async function main(): Promise<void> {
 								new OneEuroFilter(p.minCutoff, p.beta),
 							);
 						}
-						const filtered = bsFilters.get(name)!.filter(raw, now);
+						const f = bsFilters.get(name)!;
+						// Loosen the mouth filter when the mic is active.
+						if (isMouthBlendshape(name)) {
+							f.minCutoff =
+								minCutoffSilent +
+								(minCutoffTalking - minCutoffSilent) * mouthDrive;
+						}
+						const filtered = f.filter(raw, now);
 						em.setValue(name, filtered);
 						debugBlendshapes.push({ name, value: filtered });
 					}
@@ -316,7 +335,7 @@ async function main(): Promise<void> {
 						STANDARD_VRM_MAP,
 					)) {
 						if (em.getValue(vrmExpr) === undefined) continue;
-						const raw = Math.min(
+						const baseRaw = Math.min(
 							1,
 							sources.reduce(
 								(sum, [src, w]) =>
@@ -324,21 +343,26 @@ async function main(): Promise<void> {
 								0,
 							),
 						);
+						const raw = isMouthBlendshape(vrmExpr)
+							? Math.min(1, baseRaw * (1 + micAmp * amplitudeScale))
+							: baseRaw;
 						if (!bsFilters.has(vrmExpr))
 							bsFilters.set(
 								vrmExpr,
 								new OneEuroFilter(bsMin, bsBeta),
 							);
-						const filtered = bsFilters
-							.get(vrmExpr)!
-							.filter(raw, now);
+						const f = bsFilters.get(vrmExpr)!;
+						if (isMouthBlendshape(vrmExpr)) {
+							f.minCutoff =
+								minCutoffSilent +
+								(minCutoffTalking - minCutoffSilent) * mouthDrive;
+						}
+						const filtered = f.filter(raw, now);
 						em.setValue(vrmExpr, filtered);
 						debugBlendshapes.push({ name: vrmExpr, value: filtered });
 					}
 				}
 
-				// Audio blend: override mouth shapes with mic-derived visemes
-				if (audioVisemes) applyAudioBlend(em, audioVisemes);
 				em.update();
 			}
 
@@ -486,18 +510,10 @@ async function main(): Promise<void> {
 				blendshapes: debugBlendshapes,
 				head: debugHead,
 				arms: debugArms,
-				audio: audioVisemes
+				audio: audioState
 					? [
-							{ name: "blend",       value: audioVisemes.blend },
-							{ name: "80–350 Hz",   value: audioVisemes.bands[0] },
-							{ name: "350–800 Hz",  value: audioVisemes.bands[1] },
-							{ name: "800–1500 Hz", value: audioVisemes.bands[2] },
-							{ name: "1500–3k Hz",  value: audioVisemes.bands[3] },
-							{ name: "aa", value: audioVisemes.aa },
-							{ name: "oh", value: audioVisemes.oh },
-							{ name: "ou", value: audioVisemes.ou },
-							{ name: "ee", value: audioVisemes.ee },
-							{ name: "ih", value: audioVisemes.ih },
+							{ name: "amplitude", value: micAmp },
+							{ name: "mouth drive", value: mouthDrive },
 						]
 					: undefined,
 			});
