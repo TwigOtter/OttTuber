@@ -3,7 +3,11 @@ import { VRMHumanBoneName } from "@pixiv/three-vrm";
 import { FilesetResolver } from "@mediapipe/tasks-vision";
 import { OneEuroFilter } from "./one-euro-filter";
 import { openMic, getMicAmplitude } from "./audio";
-import { loadFaceLandmarker, loadPoseLandmarker, loadHandLandmarker } from "./landmarkers";
+import {
+	loadFaceLandmarker,
+	loadPoseLandmarker,
+	loadHandLandmarker,
+} from "./landmarkers";
 import { loadVrm, openWebcam } from "./loaders";
 import { RIGHT, LEFT, HandBoneSet, buildHLM, applyHandPose } from "./hand-pose";
 
@@ -45,17 +49,36 @@ const RAD_TO_DEG = 180 / Math.PI;
  * sources. Multiple sources are summed and clamped to [0, 1].
  */
 const STANDARD_VRM_MAP: Record<string, [string, number][]> = {
-	blinkLeft:  [["eyeBlinkLeft", 1]],
+	blinkLeft: [["eyeBlinkLeft", 1]],
 	blinkRight: [["eyeBlinkRight", 1]],
 	aa: [["jawOpen", 1]],
 	ih: [["mouthClose", 0.6]],
 	ou: [["mouthPucker", 1]],
-	ee: [["mouthStretchLeft", 0.5], ["mouthStretchRight", 0.5]],
-	oh: [["jawOpen", 0.4], ["mouthFunnel", 0.6]],
-	happy:     [["mouthSmileLeft", 0.5], ["mouthSmileRight", 0.5]],
-	sad:       [["mouthFrownLeft", 0.5], ["mouthFrownRight", 0.5]],
-	angry:     [["browDownLeft", 0.5], ["browDownRight", 0.5]],
-	surprised: [["browInnerUp", 0.6], ["eyeWideLeft", 0.2], ["eyeWideRight", 0.2]],
+	ee: [
+		["mouthStretchLeft", 0.5],
+		["mouthStretchRight", 0.5],
+	],
+	oh: [
+		["jawOpen", 0.4],
+		["mouthFunnel", 0.6],
+	],
+	happy: [
+		["mouthSmileLeft", 0.5],
+		["mouthSmileRight", 0.5],
+	],
+	sad: [
+		["mouthFrownLeft", 0.5],
+		["mouthFrownRight", 0.5],
+	],
+	angry: [
+		["browDownLeft", 0.5],
+		["browDownRight", 0.5],
+	],
+	surprised: [
+		["browInnerUp", 0.6],
+		["eyeWideLeft", 0.2],
+		["eyeWideRight", 0.2],
+	],
 };
 
 /** Default config values used when no config.json is present on disk. */
@@ -72,7 +95,7 @@ const DEFAULT_CONFIG: AppConfig = {
 		blendshapeAmplify: { eyeBlinkLeft: 2.0, eyeBlinkRight: 2.0 },
 		blendshapeFilter: { minCutoff: 1.0, beta: 0.007 },
 		blendshapeFilterOverrides: {
-			eyeBlinkLeft:  { minCutoff: 10.0, beta: 0.5 },
+			eyeBlinkLeft: { minCutoff: 10.0, beta: 0.5 },
 			eyeBlinkRight: { minCutoff: 10.0, beta: 0.5 },
 		},
 		headFilter: { minCutoff: 1.5, beta: 0.1 },
@@ -95,15 +118,21 @@ async function main(): Promise<void> {
 		"https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm",
 	);
 
-	const [vrm, faceLandmarker, poseLandmarker, handLandmarker, video, audioState] =
-		await Promise.all([
-			loadVrm(config.model.path),
-			loadFaceLandmarker(vision),
-			loadPoseLandmarker(vision),
-			loadHandLandmarker(vision),
-			openWebcam(config.webcam),
-			openMic(config.audio),
-		]);
+	const [
+		vrm,
+		faceLandmarker,
+		poseLandmarker,
+		handLandmarker,
+		video,
+		audioState,
+	] = await Promise.all([
+		loadVrm(config.model.path),
+		loadFaceLandmarker(vision),
+		loadPoseLandmarker(vision),
+		loadHandLandmarker(vision),
+		openWebcam(config.webcam),
+		openMic(config.audio),
+	]);
 
 	// Apply camera from config
 	const [cx, cy, cz] = config.camera.position;
@@ -156,40 +185,40 @@ async function main(): Promise<void> {
 
 	const handBones: { left: HandBoneSet; right: HandBoneSet } = {
 		left: {
-			wrist:               hb("leftHand"),
-			thumbMetacarpal:     hb("leftThumbMetacarpal"),
-			thumbProximal:       hb("leftThumbProximal"),
-			thumbDistal:         hb("leftThumbDistal"),
-			indexProximal:       hb("leftIndexProximal"),
-			indexIntermediate:   hb("leftIndexIntermediate"),
-			indexDistal:         hb("leftIndexDistal"),
-			middleProximal:      hb("leftMiddleProximal"),
-			middleIntermediate:  hb("leftMiddleIntermediate"),
-			middleDistal:        hb("leftMiddleDistal"),
-			ringProximal:        hb("leftRingProximal"),
-			ringIntermediate:    hb("leftRingIntermediate"),
-			ringDistal:          hb("leftRingDistal"),
-			littleProximal:      hb("leftLittleProximal"),
-			littleIntermediate:  hb("leftLittleIntermediate"),
-			littleDistal:        hb("leftLittleDistal"),
+			wrist: hb("leftHand"),
+			thumbMetacarpal: hb("leftThumbMetacarpal"),
+			thumbProximal: hb("leftThumbProximal"),
+			thumbDistal: hb("leftThumbDistal"),
+			indexProximal: hb("leftIndexProximal"),
+			indexIntermediate: hb("leftIndexIntermediate"),
+			indexDistal: hb("leftIndexDistal"),
+			middleProximal: hb("leftMiddleProximal"),
+			middleIntermediate: hb("leftMiddleIntermediate"),
+			middleDistal: hb("leftMiddleDistal"),
+			ringProximal: hb("leftRingProximal"),
+			ringIntermediate: hb("leftRingIntermediate"),
+			ringDistal: hb("leftRingDistal"),
+			littleProximal: hb("leftLittleProximal"),
+			littleIntermediate: hb("leftLittleIntermediate"),
+			littleDistal: hb("leftLittleDistal"),
 		},
 		right: {
-			wrist:               hb("rightHand"),
-			thumbMetacarpal:     hb("rightThumbMetacarpal"),
-			thumbProximal:       hb("rightThumbProximal"),
-			thumbDistal:         hb("rightThumbDistal"),
-			indexProximal:       hb("rightIndexProximal"),
-			indexIntermediate:   hb("rightIndexIntermediate"),
-			indexDistal:         hb("rightIndexDistal"),
-			middleProximal:      hb("rightMiddleProximal"),
-			middleIntermediate:  hb("rightMiddleIntermediate"),
-			middleDistal:        hb("rightMiddleDistal"),
-			ringProximal:        hb("rightRingProximal"),
-			ringIntermediate:    hb("rightRingIntermediate"),
-			ringDistal:          hb("rightRingDistal"),
-			littleProximal:      hb("rightLittleProximal"),
-			littleIntermediate:  hb("rightLittleIntermediate"),
-			littleDistal:        hb("rightLittleDistal"),
+			wrist: hb("rightHand"),
+			thumbMetacarpal: hb("rightThumbMetacarpal"),
+			thumbProximal: hb("rightThumbProximal"),
+			thumbDistal: hb("rightThumbDistal"),
+			indexProximal: hb("rightIndexProximal"),
+			indexIntermediate: hb("rightIndexIntermediate"),
+			indexDistal: hb("rightIndexDistal"),
+			middleProximal: hb("rightMiddleProximal"),
+			middleIntermediate: hb("rightMiddleIntermediate"),
+			middleDistal: hb("rightMiddleDistal"),
+			ringProximal: hb("rightRingProximal"),
+			ringIntermediate: hb("rightRingIntermediate"),
+			ringDistal: hb("rightRingDistal"),
+			littleProximal: hb("rightLittleProximal"),
+			littleIntermediate: hb("rightLittleIntermediate"),
+			littleDistal: hb("rightLittleDistal"),
 		},
 	};
 
@@ -220,12 +249,12 @@ async function main(): Promise<void> {
 		new OneEuroFilter(armMin, armBeta),
 	];
 	const poseFilters = {
-		leftShoulder:  mkF(),
+		leftShoulder: mkF(),
 		rightShoulder: mkF(),
-		leftElbow:     mkF(),
-		rightElbow:    mkF(),
-		leftWrist:     mkF(),
-		rightWrist:    mkF(),
+		leftElbow: mkF(),
+		rightElbow: mkF(),
+		leftWrist: mkF(),
+		rightWrist: mkF(),
 	};
 
 	// MediaPipe pose world space: +X toward person's left, +Y up, +Z toward camera.
@@ -290,7 +319,10 @@ async function main(): Promise<void> {
 			const minCutoffTalking = mouthCfg?.minCutoffTalking ?? 8.0;
 			const amplitudeScale = mouthCfg?.amplitudeScale ?? 2;
 			// Normalise amplitude above the noise floor to a 0–1 drive value.
-			const mouthDrive = Math.min(1, Math.max(0, micAmp - noiseFloor) / (0.1 - noiseFloor));
+			const mouthDrive = Math.min(
+				1,
+				Math.max(0, micAmp - noiseFloor) / (0.1 - noiseFloor),
+			);
 
 			// --- Blendshapes ---
 			const shapes = faceResult.faceBlendshapes?.[0]?.categories;
@@ -303,9 +335,13 @@ async function main(): Promise<void> {
 						const amplify =
 							config.tracking.blendshapeAmplify[name] ?? 1;
 						const baseRaw = Math.min(1, shape.score * amplify);
-						const raw = isMouthBlendshape(name)
-							? Math.min(1, baseRaw * (1 + micAmp * amplitudeScale))
-							: baseRaw;
+						const raw =
+							isMouthBlendshape(name) ?
+								Math.min(
+									1,
+									baseRaw * (1 + micAmp * amplitudeScale),
+								)
+							:	baseRaw;
 						if (!bsFilters.has(name)) {
 							const p = bsOverrides[name] ?? {
 								minCutoff: bsMin,
@@ -321,7 +357,8 @@ async function main(): Promise<void> {
 						if (isMouthBlendshape(name)) {
 							f.minCutoff =
 								minCutoffSilent +
-								(minCutoffTalking - minCutoffSilent) * mouthDrive;
+								(minCutoffTalking - minCutoffSilent) *
+									mouthDrive;
 						}
 						const filtered = f.filter(raw, now);
 						em.setValue(name, filtered);
@@ -343,9 +380,13 @@ async function main(): Promise<void> {
 								0,
 							),
 						);
-						const raw = isMouthBlendshape(vrmExpr)
-							? Math.min(1, baseRaw * (1 + micAmp * amplitudeScale))
-							: baseRaw;
+						const raw =
+							isMouthBlendshape(vrmExpr) ?
+								Math.min(
+									1,
+									baseRaw * (1 + micAmp * amplitudeScale),
+								)
+							:	baseRaw;
 						if (!bsFilters.has(vrmExpr))
 							bsFilters.set(
 								vrmExpr,
@@ -355,11 +396,15 @@ async function main(): Promise<void> {
 						if (isMouthBlendshape(vrmExpr)) {
 							f.minCutoff =
 								minCutoffSilent +
-								(minCutoffTalking - minCutoffSilent) * mouthDrive;
+								(minCutoffTalking - minCutoffSilent) *
+									mouthDrive;
 						}
 						const filtered = f.filter(raw, now);
 						em.setValue(vrmExpr, filtered);
-						debugBlendshapes.push({ name: vrmExpr, value: filtered });
+						debugBlendshapes.push({
+							name: vrmExpr,
+							value: filtered,
+						});
 					}
 				}
 
@@ -381,8 +426,8 @@ async function main(): Promise<void> {
 				);
 				debugHead = {
 					pitch: hx * RAD_TO_DEG,
-					yaw:   hy * RAD_TO_DEG,
-					roll:  hz * RAD_TO_DEG,
+					yaw: hy * RAD_TO_DEG,
+					roll: hz * RAD_TO_DEG,
 				};
 			}
 
@@ -391,14 +436,27 @@ async function main(): Promise<void> {
 			const wlms = poseResult.worldLandmarks[0];
 			if (wlms) {
 				// MediaPipe pose landmark indices
-				const LSHO = 11, RSHO = 12, LELB = 13, RELB = 14, LWRI = 15, RWRI = 16;
+				const LSHO = 11,
+					RSHO = 12,
+					LELB = 13,
+					RELB = 14,
+					LWRI = 15,
+					RWRI = 16;
 
-				const lSho = filterLm(poseFilters.leftShoulder,  wlms[LSHO], now);
-				const rSho = filterLm(poseFilters.rightShoulder, wlms[RSHO], now);
-				const lElb = filterLm(poseFilters.leftElbow,     wlms[LELB], now);
-				const rElb = filterLm(poseFilters.rightElbow,    wlms[RELB], now);
-				const lWri = filterLm(poseFilters.leftWrist,     wlms[LWRI], now);
-				const rWri = filterLm(poseFilters.rightWrist,    wlms[RWRI], now);
+				const lSho = filterLm(
+					poseFilters.leftShoulder,
+					wlms[LSHO],
+					now,
+				);
+				const rSho = filterLm(
+					poseFilters.rightShoulder,
+					wlms[RSHO],
+					now,
+				);
+				const lElb = filterLm(poseFilters.leftElbow, wlms[LELB], now);
+				const rElb = filterLm(poseFilters.rightElbow, wlms[RELB], now);
+				const lWri = filterLm(poseFilters.leftWrist, wlms[LWRI], now);
+				const rWri = filterLm(poseFilters.rightWrist, wlms[RWRI], now);
 
 				// Right arm
 				if (armBones.right.upper && armBones.right.lower) {
@@ -510,12 +568,13 @@ async function main(): Promise<void> {
 				blendshapes: debugBlendshapes,
 				head: debugHead,
 				arms: debugArms,
-				audio: audioState
-					? [
+				audio:
+					audioState ?
+						[
 							{ name: "amplitude", value: micAmp },
 							{ name: "mouth drive", value: mouthDrive },
 						]
-					: undefined,
+					:	undefined,
 			});
 		}
 

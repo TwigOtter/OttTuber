@@ -28,7 +28,9 @@ export async function openMic(
 		// Intentionally not connected to ctx.destination — no echo.
 		return {
 			analyser,
-			timeDomainData: new Float32Array(analyser.fftSize) as Float32Array<ArrayBuffer>,
+			timeDomainData: new Float32Array(
+				analyser.fftSize,
+			) as Float32Array<ArrayBuffer>,
 		};
 	} catch (e) {
 		console.warn("[audio] mic open failed:", e);

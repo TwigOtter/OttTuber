@@ -39,21 +39,21 @@ export interface HandBoneSet {
  * the little-finger bones instead, preventing the little finger from sticking out.
  */
 export function buildHLM(hasRingFinger: boolean) {
-	return hasRingFinger
-		? {
+	return hasRingFinger ?
+			{
 				WRIST: 0,
-				THUMB:  [1,  2,  3,  4],
-				INDEX:  [5,  6,  7,  8],
-				MIDDLE: [9,  10, 11, 12],
-				RING:   [13, 14, 15, 16],
+				THUMB: [1, 2, 3, 4],
+				INDEX: [5, 6, 7, 8],
+				MIDDLE: [9, 10, 11, 12],
+				RING: [13, 14, 15, 16],
 				LITTLE: [17, 18, 19, 20],
 			}
-		: {
+		:	{
 				WRIST: 0,
-				THUMB:  [1,  2,  3,  4],
-				INDEX:  [5,  6,  7,  8],
-				MIDDLE: [9,  10, 11, 12],
-				RING:   [17, 18, 19, 20],
+				THUMB: [1, 2, 3, 4],
+				INDEX: [5, 6, 7, 8],
+				MIDDLE: [9, 10, 11, 12],
+				RING: [17, 18, 19, 20],
 				LITTLE: [13, 14, 15, 16],
 			};
 }
@@ -140,11 +140,34 @@ export function applyHandPose(
 
 	// --- Finger chains: [landmark indices], [bones] ---
 	const chains: [number[], (THREE.Object3D | null)[]][] = [
-		[hlm.THUMB,  [bones.thumbMetacarpal, bones.thumbProximal, bones.thumbDistal]],
-		[hlm.INDEX,  [bones.indexProximal,   bones.indexIntermediate,  bones.indexDistal]],
-		[hlm.MIDDLE, [bones.middleProximal,  bones.middleIntermediate, bones.middleDistal]],
-		[hlm.RING,   [bones.ringProximal,    bones.ringIntermediate,   bones.ringDistal]],
-		[hlm.LITTLE, [bones.littleProximal,  bones.littleIntermediate, bones.littleDistal]],
+		[
+			hlm.THUMB,
+			[bones.thumbMetacarpal, bones.thumbProximal, bones.thumbDistal],
+		],
+		[
+			hlm.INDEX,
+			[bones.indexProximal, bones.indexIntermediate, bones.indexDistal],
+		],
+		[
+			hlm.MIDDLE,
+			[
+				bones.middleProximal,
+				bones.middleIntermediate,
+				bones.middleDistal,
+			],
+		],
+		[
+			hlm.RING,
+			[bones.ringProximal, bones.ringIntermediate, bones.ringDistal],
+		],
+		[
+			hlm.LITTLE,
+			[
+				bones.littleProximal,
+				bones.littleIntermediate,
+				bones.littleDistal,
+			],
+		],
 	];
 
 	for (const [lm, fingerBones] of chains) {
