@@ -1,211 +1,14 @@
 import * as THREE from "three";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
-import {
-	VRM,
-	VRMLoaderPlugin,
-	VRMHumanBoneName,
-	VRMExpressionManager,
-} from "@pixiv/three-vrm";
-import {
-	FilesetResolver,
-	FaceLandmarker,
-	PoseLandmarker,
-	HandLandmarker,
-} from "@mediapipe/tasks-vision";
+import { VRMHumanBoneName } from "@pixiv/three-vrm";
+import { FilesetResolver } from "@mediapipe/tasks-vision";
+import { OneEuroFilter } from "./one-euro-filter";
+import { openMic, computeAudioVisemes, applyAudioBlend } from "./audio";
+import { loadFaceLandmarker, loadPoseLandmarker, loadHandLandmarker } from "./landmarkers";
+import { loadVrm, openWebcam } from "./loaders";
+import { RIGHT, LEFT, HandBoneSet, buildHLM, applyHandPose } from "./hand-pose";
 
 // ---------------------------------------------------------------------------
-// One-euro filter (vendored)
-// ---------------------------------------------------------------------------
-
-class OneEuroFilter {
-	private minCutoff: number;
-	private beta: number;
-	private dCutoff: number;
-	private x: number | null = null;
-	private dx = 0;
-	private t: number | null = null;
-
-	constructor(minCutoff = 1.0, beta = 0.007, dCutoff = 1.0) {
-		this.minCutoff = minCutoff;
-		this.beta = beta;
-		this.dCutoff = dCutoff;
-	}
-
-	private alpha(cutoff: number, dt: number): number {
-		const r = 2 * Math.PI * cutoff * dt;
-		return r / (r + 1);
-	}
-
-	filter(value: number, timestamp: number): number {
-		if (this.t === null) {
-			this.t = timestamp;
-			this.x = value;
-			return value;
-		}
-		const dt = Math.max((timestamp - this.t) / 1000, 1e-6);
-		const d = (value - this.x!) / dt;
-		this.dx += this.alpha(this.dCutoff, dt) * (d - this.dx);
-		const cutoff = this.minCutoff + this.beta * Math.abs(this.dx);
-		this.x = this.x! + this.alpha(cutoff, dt) * (value - this.x!);
-		this.t = timestamp;
-		return this.x!;
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Audio viseme analyser
-// ---------------------------------------------------------------------------
-
-function smoothstep(edge0: number, edge1: number, x: number): number {
-	const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
-	return t * t * (3 - 2 * t);
-}
-
-function bandAvg(
-	data: Float32Array,
-	loHz: number,
-	hiHz: number,
-	binHz: number,
-): number {
-	const lo = Math.max(0, Math.floor(loHz / binHz));
-	const hi = Math.min(Math.floor(hiHz / binHz), data.length - 1);
-	if (hi < lo) return 0;
-	let sum = 0;
-	for (let i = lo; i <= hi; i++) sum += Math.pow(10, data[i] / 20);
-	return sum / (hi - lo + 1);
-}
-
-interface AudioState {
-	analyser: AnalyserNode;
-	freqData: Float32Array<ArrayBuffer>;
-	filters: Map<string, OneEuroFilter>;
-	bandPeaks: [number, number, number, number];
-	blendPeak: number;
-}
-
-interface AudioVisemes {
-	blend: number;
-	aa: number;
-	oh: number;
-	ou: number;
-	ee: number;
-	ih: number;
-	// band energies normalized to silence threshold, for debug display
-	bands: [number, number, number, number];
-}
-
-async function openMic(
-	audio: AppConfig["audio"],
-): Promise<AudioState | null> {
-	if (audio?.enabled === false) return null;
-	try {
-		let constraint: MediaTrackConstraints | boolean = true;
-		if (audio?.deviceId)
-			constraint = { deviceId: { exact: audio.deviceId } };
-		const stream = await navigator.mediaDevices.getUserMedia({
-			audio: constraint,
-			video: false,
-		});
-		const ctx = new AudioContext();
-		const source = ctx.createMediaStreamSource(stream);
-		const analyser = ctx.createAnalyser();
-		analyser.fftSize = 2048;
-		analyser.smoothingTimeConstant = 0.6;
-		source.connect(analyser);
-		// intentionally not connected to ctx.destination — no echo
-		return {
-			analyser,
-			freqData: new Float32Array(analyser.frequencyBinCount),
-			filters: new Map(),
-			bandPeaks: [0, 0, 0, 0],
-			blendPeak: 0,
-		};
-	} catch (e) {
-		console.warn("[audio] mic open failed:", e);
-		return null;
-	}
-}
-
-function computeAudioVisemes(
-	state: AudioState,
-	cfg: AppConfig["audio"],
-	now: number,
-): AudioVisemes {
-	state.analyser.getFloatFrequencyData(state.freqData);
-	const binHz = state.analyser.context.sampleRate / state.analyser.fftSize;
-	const d = state.freqData;
-
-	// Four bands tuned to vocal formant regions (F1 / F2)
-	const s = cfg?.sensitivity ?? 1;
-	const decay = cfg?.bandDecay ?? 0.008;
-	const p = state.bandPeaks;
-	const bLow    = p[0] = Math.max(bandAvg(d,   80,  350, binHz) * s, p[0] - decay);
-	const bMidLow = p[1] = Math.max(bandAvg(d,  350,  800, binHz) * s, p[1] - decay);
-	const bMid    = p[2] = Math.max(bandAvg(d,  800, 1500, binHz) * s, p[2] - decay);
-	const bMidHigh= p[3] = Math.max(bandAvg(d, 1500, 3000, binHz) * s, p[3] - decay);
-
-	const rms = Math.sqrt(
-		(bLow ** 2 + bMidLow ** 2 + bMid ** 2 + bMidHigh ** 2) / 4,
-	);
-	const threshold = cfg?.silenceThreshold ?? 0.015;
-	const rawBlend = smoothstep(threshold, threshold * 4, rms) * (cfg?.blendWeight ?? 1);
-	const blendDecay = cfg?.blendDecay ?? 0.04;
-	const blend = state.blendPeak = Math.max(rawBlend, state.blendPeak - blendDecay);
-
-	// Normalize bands to threshold scale so 1.0 = "clearly speaking"
-	const tScale = 1 / (threshold * 4);
-	const bands: [number, number, number, number] = [
-		Math.min(1, bLow * tScale),
-		Math.min(1, bMidLow * tScale),
-		Math.min(1, bMid * tScale),
-		Math.min(1, bMidHigh * tScale),
-	];
-
-	// Normalize against the "clearly speaking" level so viseme values are
-	// proportional to absolute volume. Avoids the relative-peak trap where
-	// the loudest band always maps to 1.0 even when all bands are tiny.
-	const ref = threshold * 4;
-	const { minCutoff = 6.0, beta = 0.3 } = cfg?.filter ?? {};
-	const speaking = rawBlend > 0.001;
-	const filt = (name: string, v: number): number => {
-		if (!state.filters.has(name))
-			state.filters.set(name, new OneEuroFilter(minCutoff, beta));
-		const raw = Math.min(1, v / ref);
-		// Always tick the filter to keep its state current for smooth decay on silence.
-		const filtered = state.filters.get(name)!.filter(raw, now);
-		return speaking ? raw : filtered;
-	};
-
-	return {
-		blend,
-		bands,
-		aa: filt("aa", bMid),
-		oh: filt("oh", bMidLow),
-		ou: filt("ou", bLow),
-		ee: filt("ee", bMidHigh * 1.1),
-		ih: filt("ih", bMidHigh * 0.6 + bMidLow * 0.2),
-	};
-}
-
-function applyAudioBlend(
-	em: VRMExpressionManager,
-	v: AudioVisemes,
-): void {
-	const over = (name: string, target: number): void => {
-		const cur = em.getValue(name);
-		if (cur === null) return;
-		em.setValue(name, Math.max(0, Math.min(1, cur + (target - cur) * 0.2)));
-	};
-
-	over("aa", v.aa);
-	over("oh", v.oh);
-	over("ou", v.ou);
-	over("ee", v.ee);
-	over("ih", v.ih);
-}
-
-// ---------------------------------------------------------------------------
-// Scene
+// Scene setup
 // ---------------------------------------------------------------------------
 
 const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
@@ -231,150 +34,31 @@ sun.position.set(1, 2, 3);
 scene.add(sun);
 
 // ---------------------------------------------------------------------------
-// VRM load
+// Constants
 // ---------------------------------------------------------------------------
 
-// Fallback mapping for avatars that only expose standard VRM 1.x expressions.
-// Each entry is [arkitBlendshapeName, weight]. Multiple sources are summed and clamped.
+const RAD_TO_DEG = 180 / Math.PI;
+
+/**
+ * Fallback blendshape mapping for avatars that only expose standard VRM 1.x expressions.
+ * Each entry maps an internal expression name to one or more [ARKitBlendshapeName, weight]
+ * sources. Multiple sources are summed and clamped to [0, 1].
+ */
 const STANDARD_VRM_MAP: Record<string, [string, number][]> = {
-	blinkLeft: [["eyeBlinkLeft", 1]],
+	blinkLeft:  [["eyeBlinkLeft", 1]],
 	blinkRight: [["eyeBlinkRight", 1]],
 	aa: [["jawOpen", 1]],
 	ih: [["mouthClose", 0.6]],
 	ou: [["mouthPucker", 1]],
-	ee: [
-		["mouthStretchLeft", 0.5],
-		["mouthStretchRight", 0.5],
-	],
-	oh: [
-		["jawOpen", 0.4],
-		["mouthFunnel", 0.6],
-	],
-	happy: [
-		["mouthSmileLeft", 0.5],
-		["mouthSmileRight", 0.5],
-	],
-	sad: [
-		["mouthFrownLeft", 0.5],
-		["mouthFrownRight", 0.5],
-	],
-	angry: [
-		["browDownLeft", 0.5],
-		["browDownRight", 0.5],
-	],
-	surprised: [
-		["browInnerUp", 0.6],
-		["eyeWideLeft", 0.2],
-		["eyeWideRight", 0.2],
-	],
+	ee: [["mouthStretchLeft", 0.5], ["mouthStretchRight", 0.5]],
+	oh: [["jawOpen", 0.4], ["mouthFunnel", 0.6]],
+	happy:     [["mouthSmileLeft", 0.5], ["mouthSmileRight", 0.5]],
+	sad:       [["mouthFrownLeft", 0.5], ["mouthFrownRight", 0.5]],
+	angry:     [["browDownLeft", 0.5], ["browDownRight", 0.5]],
+	surprised: [["browInnerUp", 0.6], ["eyeWideLeft", 0.2], ["eyeWideRight", 0.2]],
 };
 
-async function loadVrm(path: string): Promise<VRM> {
-	const buffer = await window.electron.loadVrm(path);
-	const loader = new GLTFLoader();
-	loader.register((parser) => new VRMLoaderPlugin(parser));
-	const gltf = await new Promise<{ userData: { vrm: VRM } }>(
-		(resolve, reject) =>
-			loader.parse(
-				buffer,
-				"",
-				resolve as (gltf: unknown) => void,
-				reject,
-			),
-	);
-	const vrm = gltf.userData.vrm;
-	console.log(
-		"VRM expressions:",
-		vrm.expressionManager?.expressions.map((e) => e.expressionName),
-	);
-	return vrm;
-}
-
-// ---------------------------------------------------------------------------
-// MediaPipe face landmarker
-// ---------------------------------------------------------------------------
-
-type VisionFileset = Awaited<ReturnType<typeof FilesetResolver.forVisionTasks>>;
-
-async function loadFaceLandmarker(
-	vision: VisionFileset,
-): Promise<FaceLandmarker> {
-	return FaceLandmarker.createFromOptions(vision, {
-		baseOptions: {
-			modelAssetPath:
-				"https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task",
-			delegate: "GPU",
-		},
-		outputFaceBlendshapes: true,
-		outputFacialTransformationMatrixes: true,
-		runningMode: "VIDEO",
-		numFaces: 1,
-	});
-}
-
-async function loadPoseLandmarker(
-	vision: VisionFileset,
-): Promise<PoseLandmarker> {
-	return PoseLandmarker.createFromOptions(vision, {
-		baseOptions: {
-			modelAssetPath:
-				"https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task",
-			delegate: "GPU",
-		},
-		runningMode: "VIDEO",
-		numPoses: 1,
-		outputSegmentationMasks: false,
-	});
-}
-
-async function loadHandLandmarker(
-	vision: VisionFileset,
-): Promise<HandLandmarker> {
-	return HandLandmarker.createFromOptions(vision, {
-		baseOptions: {
-			modelAssetPath:
-				"https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-			delegate: "GPU",
-		},
-		runningMode: "VIDEO",
-		numHands: 2,
-	});
-}
-
-// ---------------------------------------------------------------------------
-// Webcam
-// ---------------------------------------------------------------------------
-
-async function openWebcam(
-	webcam: AppConfig["webcam"],
-): Promise<HTMLVideoElement> {
-	const video = document.createElement("video");
-	video.style.display = "none";
-	document.body.appendChild(video);
-
-	let videoConstraint: MediaTrackConstraints | boolean = true;
-	if (webcam?.deviceLabel) {
-		const devices = await navigator.mediaDevices.enumerateDevices();
-		const match = devices.find(
-			(d) => d.kind === "videoinput" && d.label === webcam.deviceLabel,
-		);
-		if (match) videoConstraint = { deviceId: { exact: match.deviceId } };
-	} else if (webcam?.deviceId) {
-		videoConstraint = { deviceId: { exact: webcam.deviceId } };
-	}
-
-	const stream = await navigator.mediaDevices.getUserMedia({
-		video: videoConstraint,
-	});
-	video.srcObject = stream;
-	await video.play();
-	return video;
-}
-
-// ---------------------------------------------------------------------------
-// Main
-// ---------------------------------------------------------------------------
-
+/** Default config values used when no config.json is present on disk. */
 const DEFAULT_CONFIG: AppConfig = {
 	camera: { position: [0, 0.75, 1.1], lookAt: [0, 0.6, 0], fov: 35 },
 	audio: {
@@ -394,7 +78,7 @@ const DEFAULT_CONFIG: AppConfig = {
 		blendshapeAmplify: { eyeBlinkLeft: 2.0, eyeBlinkRight: 2.0 },
 		blendshapeFilter: { minCutoff: 1.0, beta: 0.007 },
 		blendshapeFilterOverrides: {
-			eyeBlinkLeft: { minCutoff: 10.0, beta: 0.5 },
+			eyeBlinkLeft:  { minCutoff: 10.0, beta: 0.5 },
 			eyeBlinkRight: { minCutoff: 10.0, beta: 0.5 },
 		},
 		headFilter: { minCutoff: 1.5, beta: 0.1 },
@@ -403,8 +87,11 @@ const DEFAULT_CONFIG: AppConfig = {
 	},
 };
 
-const RAD_TO_DEG = 180 / Math.PI;
+// ---------------------------------------------------------------------------
+// Main
+// ---------------------------------------------------------------------------
 
+/** Entry point: loads config, initialises MediaPipe/VRM/webcam, starts the render loop. */
 async function main(): Promise<void> {
 	// Config must resolve first — VRM path comes from it
 	const config: AppConfig =
@@ -438,13 +125,11 @@ async function main(): Promise<void> {
 	vrm.scene.scale.setScalar(config.model.scale);
 	scene.add(vrm.scene);
 
-	// Mirror by negating the X scale. This is a simple way to mirror the avatar without needing to adjust the tracking data.
-	if (config.model.mirror) {
-		vrm.scene.scale.x *= -1;
-	}
+	// Mirror by negating the X scale.
+	if (config.model.mirror) vrm.scene.scale.x *= -1;
 
 	// ARKit avatars expose 'jawOpen' as a custom expression — direct pass-through.
-	// Standard VRM avatars only have the built-in expression set — use the mapping table.
+	// Standard VRM avatars only have the built-in expression set — use STANDARD_VRM_MAP.
 	const useARKit = vrm.expressionManager?.getValue("jawOpen") !== undefined;
 
 	const { minCutoff: bsMin, beta: bsBeta } = config.tracking.blendshapeFilter;
@@ -474,45 +159,45 @@ async function main(): Promise<void> {
 
 	const hb = (name: VRMHumanBoneName) =>
 		vrm.humanoid?.getNormalizedBoneNode(name) ?? null;
-	const handBones = {
+
+	const handBones: { left: HandBoneSet; right: HandBoneSet } = {
 		left: {
-			wrist: hb("leftHand"),
-			thumbMetacarpal: hb("leftThumbMetacarpal"),
-			thumbProximal: hb("leftThumbProximal"),
-			thumbDistal: hb("leftThumbDistal"),
-			indexProximal: hb("leftIndexProximal"),
-			indexIntermediate: hb("leftIndexIntermediate"),
-			indexDistal: hb("leftIndexDistal"),
-			middleProximal: hb("leftMiddleProximal"),
-			middleIntermediate: hb("leftMiddleIntermediate"),
-			middleDistal: hb("leftMiddleDistal"),
-			ringProximal: hb("leftRingProximal"),
-			ringIntermediate: hb("leftRingIntermediate"),
-			ringDistal: hb("leftRingDistal"),
-			littleProximal: hb("leftLittleProximal"),
-			littleIntermediate: hb("leftLittleIntermediate"),
-			littleDistal: hb("leftLittleDistal"),
+			wrist:               hb("leftHand"),
+			thumbMetacarpal:     hb("leftThumbMetacarpal"),
+			thumbProximal:       hb("leftThumbProximal"),
+			thumbDistal:         hb("leftThumbDistal"),
+			indexProximal:       hb("leftIndexProximal"),
+			indexIntermediate:   hb("leftIndexIntermediate"),
+			indexDistal:         hb("leftIndexDistal"),
+			middleProximal:      hb("leftMiddleProximal"),
+			middleIntermediate:  hb("leftMiddleIntermediate"),
+			middleDistal:        hb("leftMiddleDistal"),
+			ringProximal:        hb("leftRingProximal"),
+			ringIntermediate:    hb("leftRingIntermediate"),
+			ringDistal:          hb("leftRingDistal"),
+			littleProximal:      hb("leftLittleProximal"),
+			littleIntermediate:  hb("leftLittleIntermediate"),
+			littleDistal:        hb("leftLittleDistal"),
 		},
 		right: {
-			wrist: hb("rightHand"),
-			thumbMetacarpal: hb("rightThumbMetacarpal"),
-			thumbProximal: hb("rightThumbProximal"),
-			thumbDistal: hb("rightThumbDistal"),
-			indexProximal: hb("rightIndexProximal"),
-			indexIntermediate: hb("rightIndexIntermediate"),
-			indexDistal: hb("rightIndexDistal"),
-			middleProximal: hb("rightMiddleProximal"),
-			middleIntermediate: hb("rightMiddleIntermediate"),
-			middleDistal: hb("rightMiddleDistal"),
-			ringProximal: hb("rightRingProximal"),
-			ringIntermediate: hb("rightRingIntermediate"),
-			ringDistal: hb("rightRingDistal"),
-			littleProximal: hb("rightLittleProximal"),
-			littleIntermediate: hb("rightLittleIntermediate"),
-			littleDistal: hb("rightLittleDistal"),
+			wrist:               hb("rightHand"),
+			thumbMetacarpal:     hb("rightThumbMetacarpal"),
+			thumbProximal:       hb("rightThumbProximal"),
+			thumbDistal:         hb("rightThumbDistal"),
+			indexProximal:       hb("rightIndexProximal"),
+			indexIntermediate:   hb("rightIndexIntermediate"),
+			indexDistal:         hb("rightIndexDistal"),
+			middleProximal:      hb("rightMiddleProximal"),
+			middleIntermediate:  hb("rightMiddleIntermediate"),
+			middleDistal:        hb("rightMiddleDistal"),
+			ringProximal:        hb("rightRingProximal"),
+			ringIntermediate:    hb("rightRingIntermediate"),
+			ringDistal:          hb("rightRingDistal"),
+			littleProximal:      hb("rightLittleProximal"),
+			littleIntermediate:  hb("rightLittleIntermediate"),
+			littleDistal:        hb("rightLittleDistal"),
 		},
 	};
-	type HandBones = typeof handBones.left;
 
 	// 21 landmarks × 3 axes × 2 hands
 	const hfMinCutoff = config.tracking.handFilter?.minCutoff ?? 4.0;
@@ -525,10 +210,6 @@ async function main(): Promise<void> {
 		]);
 	const handFilters = { left: mkHandF(), right: mkHandF() };
 
-	// T-pose rest directions for setFromUnitVectors
-	const RIGHT = new THREE.Vector3(1, 0, 0);
-	const LEFT = new THREE.Vector3(-1, 0, 0);
-
 	const cal = config.tracking.armCalibration;
 	const poseScale = new THREE.Vector3(
 		cal?.poseScale?.x ?? 1,
@@ -537,26 +218,24 @@ async function main(): Promise<void> {
 	);
 	const armMin = cal?.minCutoff ?? 2.0;
 	const armBeta = cal?.beta ?? 0.3;
-	const FOREARM_ROLL_FRACTION = 0.6;
 
-	// One-euro filter per world-landmark axis: [x, y, z]
+	/** Creates a triplet of one-euro filters for a single 3D world landmark. */
 	const mkF = () => [
 		new OneEuroFilter(armMin, armBeta),
 		new OneEuroFilter(armMin, armBeta),
 		new OneEuroFilter(armMin, armBeta),
 	];
 	const poseFilters = {
-		leftShoulder: mkF(),
+		leftShoulder:  mkF(),
 		rightShoulder: mkF(),
-		leftElbow: mkF(),
-		rightElbow: mkF(),
-		leftWrist: mkF(),
-		rightWrist: mkF(),
+		leftElbow:     mkF(),
+		rightElbow:    mkF(),
+		leftWrist:     mkF(),
+		rightWrist:    mkF(),
 	};
 
 	// MediaPipe pose world space: +X toward person's left, +Y up, +Z toward camera.
-	// Three.js world space: +X right (person's right), +Y up, +Z toward camera.
-	// Flip X to convert.
+	// Three.js world space: +X right (person's right), +Y up, +Z toward camera. Flip X.
 	const filterLm = (
 		f: ReturnType<typeof mkF>,
 		lm: { x: number; y: number; z: number },
@@ -568,166 +247,19 @@ async function main(): Promise<void> {
 			f[2].filter(lm.z, t),
 		);
 
-	// Some models (especially furries) only have eight fingers total (no separate ring finger joints).
-	// For these, I find that applying the ring finger's pose to the little finger makes the little finger stick out less awkwardly when the hand is open.
-	// This is a simple heuristic and won't work well in all cases, but it seems to help more often than not.
-
+	// Some models (especially furries) have no separate ring finger joints.
+	// When ring bone is present but little is absent, swap ring↔little landmark groups
+	// so the ring-finger pose drives the little-finger bones instead.
 	const hasRingFinger =
 		!handBones.left.littleProximal &&
-		handBones.left.ringProximal &&
+		!!handBones.left.ringProximal &&
 		handBones.left.littleProximal === null;
-
-	// Define HLM based on hasRingFinger
-	const HLM =
-		hasRingFinger ?
-			{
-				WRIST: 0,
-				THUMB: [1, 2, 3, 4],
-				INDEX: [5, 6, 7, 8],
-				MIDDLE: [9, 10, 11, 12],
-				RING: [13, 14, 15, 16],
-				LITTLE: [17, 18, 19, 20],
-			}
-		:	{
-				WRIST: 0,
-				THUMB: [1, 2, 3, 4],
-				INDEX: [5, 6, 7, 8],
-				MIDDLE: [9, 10, 11, 12],
-				RING: [17, 18, 19, 20],
-				LITTLE: [13, 14, 15, 16],
-			};
-
-	function applyHandPose(
-		pts: THREE.Vector3[],
-		side: "left" | "right",
-		bones: HandBones,
-		lowerArmWorldQuat: THREE.Quaternion,
-		lowerArmBone: THREE.Object3D,
-	): void {
-		const restDir = side === "right" ? RIGHT.clone() : LEFT.clone();
-		const invLower = lowerArmWorldQuat.clone().invert();
-
-		// --- Wrist rotation (full 3-DOF: pitch+yaw via setFromUnitVectors, roll via twist) ---
-		const wristQuat = new THREE.Quaternion();
-		const fullWristQuat = new THREE.Quaternion(); // q2*q1, used for finger parent space
-		if (bones.wrist) {
-			const fingerDir = pts[HLM.MIDDLE[0]]
-				.clone()
-				.sub(pts[HLM.WRIST])
-				.normalize();
-			const sideVec = pts[HLM.INDEX[0]].clone().sub(pts[HLM.LITTLE[0]]);
-			if (side === "left") sideVec.negate(); // Left hand's "side" vector points from little to index, opposite of right hand
-			const handNorm = new THREE.Vector3()
-				.crossVectors(fingerDir, sideVec)
-				.normalize();
-
-			// Step 1: align finger direction (pitch + yaw)
-			const fingerLocal = fingerDir.clone().applyQuaternion(invLower);
-			const q1 = new THREE.Quaternion().setFromUnitVectors(
-				restDir,
-				fingerLocal,
-			);
-
-			// Step 2: align palm normal (roll) — twist around the finger axis
-			const normLocal = handNorm.clone().applyQuaternion(invLower);
-			const nominalNorm = new THREE.Vector3(0, 1, 0).applyQuaternion(q1);
-			const fd = fingerLocal.clone().normalize();
-			const nomPerp = nominalNorm
-				.clone()
-				.addScaledVector(fd, -nominalNorm.dot(fd));
-			const actPerp = normLocal
-				.clone()
-				.addScaledVector(fd, -normLocal.dot(fd));
-			if (nomPerp.lengthSq() > 1e-6 && actPerp.lengthSq() > 1e-6) {
-				const q2 = new THREE.Quaternion().setFromUnitVectors(
-					nomPerp.normalize(),
-					actPerp.normalize(),
-				);
-				// Split roll: FOREARM_ROLL_FRACTION goes to the lower arm bone so it
-				// visually twists with the hand; the remainder stays on the wrist bone.
-				// fullWristQuat (q2*q1) is preserved for finger parent-space so finger
-				// world positions are unaffected by the split.
-				const q2Forearm = new THREE.Quaternion().slerp(
-					q2,
-					FOREARM_ROLL_FRACTION,
-				);
-				const q2Wrist = q2Forearm.clone().invert().multiply(q2);
-				lowerArmBone.quaternion.multiply(q2Forearm);
-				fullWristQuat.copy(q2.clone().multiply(q1));
-				wristQuat.copy(q2Wrist.multiply(q1));
-			} else {
-				fullWristQuat.copy(q1);
-				wristQuat.copy(q1);
-			}
-			bones.wrist.quaternion.copy(wristQuat);
-		}
-
-		// Finger parent space uses the full wrist rotation so world positions are
-		// unchanged by the forearm/wrist roll split above.
-		const handWorldQuat = lowerArmWorldQuat.clone().multiply(fullWristQuat);
-
-		// --- Finger chains: [landmark indices], [bones] ---
-		const chains: [number[], (THREE.Object3D | null)[]][] = [
-			[
-				HLM.THUMB,
-				[bones.thumbMetacarpal, bones.thumbProximal, bones.thumbDistal],
-			],
-			[
-				HLM.INDEX,
-				[
-					bones.indexProximal,
-					bones.indexIntermediate,
-					bones.indexDistal,
-				],
-			],
-			[
-				HLM.MIDDLE,
-				[
-					bones.middleProximal,
-					bones.middleIntermediate,
-					bones.middleDistal,
-				],
-			],
-			[
-				HLM.RING,
-				[bones.ringProximal, bones.ringIntermediate, bones.ringDistal],
-			],
-			[
-				HLM.LITTLE,
-				[
-					bones.littleProximal,
-					bones.littleIntermediate,
-					bones.littleDistal,
-				],
-			],
-		];
-
-		for (const [lm, fingerBones] of chains) {
-			let parentQuat = handWorldQuat.clone();
-			for (let i = 0; i < fingerBones.length; i++) {
-				const seg = pts[lm[i + 1]].clone().sub(pts[lm[i]]);
-				if (seg.lengthSq() < 1e-8) {
-					parentQuat = parentQuat
-						.clone()
-						.multiply(new THREE.Quaternion());
-					continue;
-				}
-				const segLocal = seg
-					.normalize()
-					.applyQuaternion(parentQuat.clone().invert());
-				const boneQuat = new THREE.Quaternion().setFromUnitVectors(
-					restDir,
-					segLocal,
-				);
-				fingerBones[i]?.quaternion.copy(boneQuat);
-				parentQuat = parentQuat.clone().multiply(boneQuat);
-			}
-		}
-	}
+	const hlm = buildHLM(hasRingFinger);
 
 	const clock = new THREE.Clock();
 	let lastVideoTime = -1;
 
+	/** Per-frame render + tracking loop. Processes each webcam frame exactly once. */
 	function animate(): void {
 		requestAnimationFrame(animate);
 		const delta = clock.getDelta();
@@ -736,14 +268,14 @@ async function main(): Promise<void> {
 		if (video.currentTime !== lastVideoTime) {
 			lastVideoTime = video.currentTime;
 			const ts = video.currentTime * 1000;
-			const result = faceLandmarker.detectForVideo(video, ts);
+			const faceResult = faceLandmarker.detectForVideo(video, ts);
 			const poseResult = poseLandmarker.detectForVideo(video, ts + 1);
 
 			const debugBlendshapes: DebugData["blendshapes"] = [];
 			let debugHead: DebugData["head"] = { pitch: 0, yaw: 0, roll: 0 };
 			const detected = !!(
-				result.faceBlendshapes?.[0] ||
-				result.facialTransformationMatrixes?.[0]
+				faceResult.faceBlendshapes?.[0] ||
+				faceResult.facialTransformationMatrixes?.[0]
 			);
 
 			// Audio visemes: computed once per video frame regardless of face detection
@@ -752,7 +284,7 @@ async function main(): Promise<void> {
 				: null;
 
 			// --- Blendshapes ---
-			const shapes = result.faceBlendshapes?.[0]?.categories;
+			const shapes = faceResult.faceBlendshapes?.[0]?.categories;
 			const em = vrm.expressionManager;
 
 			if (shapes && em) {
@@ -801,26 +333,20 @@ async function main(): Promise<void> {
 							.get(vrmExpr)!
 							.filter(raw, now);
 						em.setValue(vrmExpr, filtered);
-						debugBlendshapes.push({
-							name: vrmExpr,
-							value: filtered,
-						});
+						debugBlendshapes.push({ name: vrmExpr, value: filtered });
 					}
 				}
 
-					// Audio blend: override mouth shapes with mic-derived visemes
-				if (audioVisemes)
-					applyAudioBlend(em, audioVisemes);
-
+				// Audio blend: override mouth shapes with mic-derived visemes
+				if (audioVisemes) applyAudioBlend(em, audioVisemes);
 				em.update();
 			}
 
 			// --- Head rotation ---
-			const txMatrix = result.facialTransformationMatrixes?.[0];
+			const txMatrix = faceResult.facialTransformationMatrixes?.[0];
 			if (txMatrix && headBone) {
 				// MediaPipe outputs a column-major 4x4 matrix (OpenGL convention) in camera space.
 				// If any axis feels inverted when testing, flip its sign here.
-				// To mirror the model, you can also apply a 180° rotation to the Y axis in the config and flip the signs of the X and Z axes here.
 				mat4.fromArray(txMatrix.data);
 				euler.setFromRotationMatrix(mat4, "YXZ");
 				const hx = headFilters[0].filter(-euler.x, now);
@@ -831,8 +357,8 @@ async function main(): Promise<void> {
 				);
 				debugHead = {
 					pitch: hx * RAD_TO_DEG,
-					yaw: hy * RAD_TO_DEG,
-					roll: hz * RAD_TO_DEG,
+					yaw:   hy * RAD_TO_DEG,
+					roll:  hz * RAD_TO_DEG,
 				};
 			}
 
@@ -841,27 +367,14 @@ async function main(): Promise<void> {
 			const wlms = poseResult.worldLandmarks[0];
 			if (wlms) {
 				// MediaPipe pose landmark indices
-				const LSHO = 11,
-					RSHO = 12,
-					LELB = 13,
-					RELB = 14,
-					LWRI = 15,
-					RWRI = 16;
+				const LSHO = 11, RSHO = 12, LELB = 13, RELB = 14, LWRI = 15, RWRI = 16;
 
-				const lSho = filterLm(
-					poseFilters.leftShoulder,
-					wlms[LSHO],
-					now,
-				);
-				const rSho = filterLm(
-					poseFilters.rightShoulder,
-					wlms[RSHO],
-					now,
-				);
-				const lElb = filterLm(poseFilters.leftElbow, wlms[LELB], now);
-				const rElb = filterLm(poseFilters.rightElbow, wlms[RELB], now);
-				const lWri = filterLm(poseFilters.leftWrist, wlms[LWRI], now);
-				const rWri = filterLm(poseFilters.rightWrist, wlms[RWRI], now);
+				const lSho = filterLm(poseFilters.leftShoulder,  wlms[LSHO], now);
+				const rSho = filterLm(poseFilters.rightShoulder, wlms[RSHO], now);
+				const lElb = filterLm(poseFilters.leftElbow,     wlms[LELB], now);
+				const rElb = filterLm(poseFilters.rightElbow,    wlms[RELB], now);
+				const lWri = filterLm(poseFilters.leftWrist,     wlms[LWRI], now);
+				const rWri = filterLm(poseFilters.rightWrist,    wlms[RWRI], now);
 
 				// Right arm
 				if (armBones.right.upper && armBones.right.lower) {
@@ -963,6 +476,7 @@ async function main(): Promise<void> {
 						handBones[side],
 						lowerArmWorldQuat,
 						ab.lower,
+						hlm,
 					);
 				}
 			}
@@ -974,11 +488,11 @@ async function main(): Promise<void> {
 				arms: debugArms,
 				audio: audioVisemes
 					? [
-							{ name: "blend", value: audioVisemes.blend },
-							{ name: "80–350 Hz", value: audioVisemes.bands[0] },
-							{ name: "350–800 Hz", value: audioVisemes.bands[1] },
+							{ name: "blend",       value: audioVisemes.blend },
+							{ name: "80–350 Hz",   value: audioVisemes.bands[0] },
+							{ name: "350–800 Hz",  value: audioVisemes.bands[1] },
 							{ name: "800–1500 Hz", value: audioVisemes.bands[2] },
-							{ name: "1500–3k Hz", value: audioVisemes.bands[3] },
+							{ name: "1500–3k Hz",  value: audioVisemes.bands[3] },
 							{ name: "aa", value: audioVisemes.aa },
 							{ name: "oh", value: audioVisemes.oh },
 							{ name: "ou", value: audioVisemes.ou },

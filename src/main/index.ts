@@ -4,6 +4,7 @@ import { readFileSync } from "fs";
 
 let debugWin: BrowserWindow | null = null;
 
+/** Creates the debug overlay window (dark-themed, not transparent). */
 function createDebugWindow(): void {
 	debugWin = new BrowserWindow({
 		width: 480,
@@ -28,6 +29,7 @@ function createDebugWindow(): void {
 	});
 }
 
+/** Creates the main transparent, frameless avatar window. */
 function createWindow(): void {
 	const win = new BrowserWindow({
 		width: 800,

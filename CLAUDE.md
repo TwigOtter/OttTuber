@@ -61,7 +61,7 @@ Test avatar: `Twig-dotter-ARKit.vrm` (0.86 m tall otter).
 - **Every function and class gets a JSDoc comment** — one-line minimum describing what it does. This helps manual debugging and code navigation.
 - Inline comments for non-obvious logic: hidden constraints, workarounds, or anything that would surprise a reader.
 - No comments that just restate what the code already says (e.g. `// increment counter` above `i++`).
-- If a file exceeds ~1000 lines, it's a signal to discuss splitting it into smaller classes/modules.
+- If a file exceeds ~500 lines, it's a signal to discuss splitting it into smaller classes/modules.
 
 ## Known issues / watch-outs
 

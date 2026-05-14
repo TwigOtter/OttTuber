@@ -160,6 +160,10 @@ interface RowElements {
 
 const rowCache = new Map<string, RowElements>();
 
+/**
+ * Returns cached DOM row elements for the given key, creating them on first call.
+ * Rows are never destroyed — values are updated in-place each frame.
+ */
 function getOrCreateRow(
 	container: HTMLElement,
 	key: string,
@@ -200,7 +204,7 @@ function getOrCreateRow(
 // Update helpers
 // ---------------------------------------------------------------------------
 
-/** Blendshape bar: 0 → 1, left-anchored */
+/** Updates (or creates) a blendshape row with a 0–1 left-anchored bar. */
 function updateBlendshapeRow(
 	container: HTMLElement,
 	name: string,
@@ -213,7 +217,7 @@ function updateBlendshapeRow(
 	val.textContent = value.toFixed(3);
 }
 
-/** Head rotation bar: –90° → +90°, centred at 50% */
+/** Updates (or creates) a head rotation row with a ±90° centre-anchored bar. */
 function updateHeadRow(
 	container: HTMLElement,
 	label: string,
@@ -233,7 +237,7 @@ function updateHeadRow(
 	val.textContent = `${degrees >= 0 ? "+" : ""}${degrees.toFixed(1)}°`;
 }
 
-/** Audio band / viseme bar: 0 → 1, left-anchored, green */
+/** Updates (or creates) an audio band/viseme row with a 0–1 left-anchored green bar. */
 function updateAudioRow(
 	container: HTMLElement,
 	name: string,
@@ -246,6 +250,7 @@ function updateAudioRow(
 	val.textContent = value.toFixed(3);
 }
 
+/** Appends a section heading label to the given container. */
 function addSectionLabel(container: HTMLElement, text: string): void {
 	const el = document.createElement("div");
 	el.className = "section-label";
@@ -262,6 +267,7 @@ let armsSection: HTMLElement | null = null;
 let bsSection: HTMLElement | null = null;
 let audioSection: HTMLElement | null = null;
 
+/** Lazily creates section containers the first time each data category arrives. */
 function ensureSections(
 	hasHead: boolean,
 	hasArms: boolean,
