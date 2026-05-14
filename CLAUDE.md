@@ -56,6 +56,13 @@ Test avatar: `Twig-dotter-ARKit.vrm` (0.86 m tall otter).
 - Needs `vrm.scene.rotation.y = Math.PI` to face the camera
 - Camera framing for this avatar: `position(0, 0.75, 0.8)`, `lookAt(0, 0.65, 0)`, FOV 35
 
+## Code style
+
+- **Every function and class gets a JSDoc comment** — one-line minimum describing what it does. This helps manual debugging and code navigation.
+- Inline comments for non-obvious logic: hidden constraints, workarounds, or anything that would surprise a reader.
+- No comments that just restate what the code already says (e.g. `// increment counter` above `i++`).
+- If a file exceeds ~1000 lines, it's a signal to discuss splitting it into smaller classes/modules.
+
 ## Known issues / watch-outs
 
 - `npm run dev` watch/HMR for the **main process** requires restarting the app manually

@@ -77,8 +77,10 @@ function bandAvg(
 
 interface AudioState {
 	analyser: AnalyserNode;
-	freqData: Float32Array;
+	freqData: Float32Array<ArrayBuffer>;
 	filters: Map<string, OneEuroFilter>;
+	bandPeaks: [number, number, number, number];
+	blendPeak: number;
 }
 
 interface AudioVisemes {
@@ -115,6 +117,8 @@ async function openMic(
 			analyser,
 			freqData: new Float32Array(analyser.frequencyBinCount),
 			filters: new Map(),
+			bandPeaks: [0, 0, 0, 0],
+			blendPeak: 0,
 		};
 	} catch (e) {
 		console.warn("[audio] mic open failed:", e);
@@ -132,18 +136,21 @@ function computeAudioVisemes(
 	const d = state.freqData;
 
 	// Four bands tuned to vocal formant regions (F1 / F2)
-	const bLow = bandAvg(d, 80, 350, binHz); // fundamental / close-vowel F1
-	const bMidLow = bandAvg(d, 350, 800, binHz); // F1 mid-vowels (oh, ou)
-	const bMid = bandAvg(d, 800, 1500, binHz); // F1 open-vowels (aa)
-	const bMidHigh = bandAvg(d, 1500, 3000, binHz); // F2 front-vowels (ee, ih)
+	const s = cfg?.sensitivity ?? 1;
+	const decay = cfg?.bandDecay ?? 0.008;
+	const p = state.bandPeaks;
+	const bLow    = p[0] = Math.max(bandAvg(d,   80,  350, binHz) * s, p[0] - decay);
+	const bMidLow = p[1] = Math.max(bandAvg(d,  350,  800, binHz) * s, p[1] - decay);
+	const bMid    = p[2] = Math.max(bandAvg(d,  800, 1500, binHz) * s, p[2] - decay);
+	const bMidHigh= p[3] = Math.max(bandAvg(d, 1500, 3000, binHz) * s, p[3] - decay);
 
 	const rms = Math.sqrt(
 		(bLow ** 2 + bMidLow ** 2 + bMid ** 2 + bMidHigh ** 2) / 4,
 	);
 	const threshold = cfg?.silenceThreshold ?? 0.015;
-	const blend =
-		smoothstep(threshold, threshold * 4, rms * (cfg?.sensitivity ?? 1)) *
-		(cfg?.blendWeight ?? 1);
+	const rawBlend = smoothstep(threshold, threshold * 4, rms) * (cfg?.blendWeight ?? 1);
+	const blendDecay = cfg?.blendDecay ?? 0.04;
+	const blend = state.blendPeak = Math.max(rawBlend, state.blendPeak - blendDecay);
 
 	// Normalize bands to threshold scale so 1.0 = "clearly speaking"
 	const tScale = 1 / (threshold * 4);
@@ -154,65 +161,47 @@ function computeAudioVisemes(
 		Math.min(1, bMidHigh * tScale),
 	];
 
-	if (blend < 0.001) return { blend: 0, aa: 0, oh: 0, ou: 0, ee: 0, ih: 0, bands };
-
-	const raw = {
-		aa: bMid,
-		oh: bMidLow,
-		ou: bLow,
-		ee: bMidHigh * 1.1,
-		ih: bMidHigh * 0.6 + bMidLow * 0.2,
-	};
-	const peak = Math.max(...Object.values(raw), 1e-5);
+	// Normalize against the "clearly speaking" level so viseme values are
+	// proportional to absolute volume. Avoids the relative-peak trap where
+	// the loudest band always maps to 1.0 even when all bands are tiny.
+	const ref = threshold * 4;
 	const { minCutoff = 6.0, beta = 0.3 } = cfg?.filter ?? {};
+	const speaking = rawBlend > 0.001;
 	const filt = (name: string, v: number): number => {
 		if (!state.filters.has(name))
 			state.filters.set(name, new OneEuroFilter(minCutoff, beta));
-		return state.filters.get(name)!.filter(Math.sqrt(v / peak), now);
+		const raw = Math.min(1, v / ref);
+		// Always tick the filter to keep its state current for smooth decay on silence.
+		const filtered = state.filters.get(name)!.filter(raw, now);
+		return speaking ? raw : filtered;
 	};
 
 	return {
 		blend,
 		bands,
-		aa: filt("aa", raw.aa),
-		oh: filt("oh", raw.oh),
-		ou: filt("ou", raw.ou),
-		ee: filt("ee", raw.ee),
-		ih: filt("ih", raw.ih),
+		aa: filt("aa", bMid),
+		oh: filt("oh", bMidLow),
+		ou: filt("ou", bLow),
+		ee: filt("ee", bMidHigh * 1.1),
+		ih: filt("ih", bMidHigh * 0.6 + bMidLow * 0.2),
 	};
 }
 
 function applyAudioBlend(
 	em: VRMExpressionManager,
 	v: AudioVisemes,
-	useARKit: boolean,
 ): void {
 	const over = (name: string, target: number): void => {
 		const cur = em.getValue(name);
-		if (cur === undefined) return;
-		em.setValue(
-			name,
-			Math.max(0, Math.min(1, cur + (target - cur) * v.blend)),
-		);
+		if (cur === null) return;
+		em.setValue(name, Math.max(0, Math.min(1, cur + (target - cur) * 0.2)));
 	};
 
-	if (useARKit) {
-		over(
-			"jawOpen",
-			v.aa * 0.85 + v.oh * 0.55 + v.ou * 0.2 + v.ee * 0.2 + v.ih * 0.15,
-		);
-		over("mouthFunnel", v.oh * 0.7 + v.ou * 0.2);
-		over("mouthPucker", v.ou * 0.85);
-		over("mouthStretchLeft", v.ee * 0.8 + v.ih * 0.4);
-		over("mouthStretchRight", v.ee * 0.8 + v.ih * 0.4);
-		over("mouthClose", 0);
-	} else {
-		over("aa", v.aa);
-		over("oh", v.oh);
-		over("ou", v.ou);
-		over("ee", v.ee);
-		over("ih", v.ih);
-	}
+	over("aa", v.aa);
+	over("oh", v.oh);
+	over("ou", v.ou);
+	over("ee", v.ee);
+	over("ih", v.ih);
 }
 
 // ---------------------------------------------------------------------------
@@ -820,8 +809,8 @@ async function main(): Promise<void> {
 				}
 
 					// Audio blend: override mouth shapes with mic-derived visemes
-				if (audioVisemes && audioVisemes.blend > 0)
-					applyAudioBlend(em, audioVisemes, useARKit);
+				if (audioVisemes)
+					applyAudioBlend(em, audioVisemes);
 
 				em.update();
 			}

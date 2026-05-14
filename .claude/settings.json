@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node -e \"const fs=require('fs'),p=process.argv[1];try{const lines=fs.readFileSync(p,'utf8').split('\\n').length;if(lines>1000)console.warn('\\u26a0\\ufe0f  '+p+' is '+lines+' lines — consider breaking it into smaller classes/modules.');}catch(e){}\" \"${file}\""
+          }
+        ]
+      }
+    ]
+  }
+}

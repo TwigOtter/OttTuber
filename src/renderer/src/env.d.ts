@@ -16,6 +16,8 @@ interface AppConfig {
 		sensitivity?: number;
 		silenceThreshold?: number;
 		blendWeight?: number;
+		bandDecay?: number;
+		blendDecay?: number;
 		filter?: { minCutoff: number; beta: number };
 	};
 	model: {
