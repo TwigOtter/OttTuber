@@ -1,0 +1,71 @@
+{
+  "camera": {
+    "position": [
+      0,
+      0.75,
+      1.1
+    ],
+    "lookAt": [
+      0,
+      0.7,
+      0
+    ],
+    "fov": 35
+  },
+  "webcam": {
+    "deviceLabel": null,
+    "deviceId": null
+  },
+  "audio": {
+    "enabled": true,
+    "deviceId": null
+  },
+  "model": {
+    "path": "VRMs/your-avatar.vrm",
+    "scale": 1.0,
+    "rotation": [
+      0,
+      180,
+      0
+    ],
+    "mirror": true
+  },
+  "tracking": {
+    "blendshapeAmplify": {
+      "eyeBlinkLeft": 2.0,
+      "eyeBlinkRight": 2.0
+    },
+    "blendshapeFilter": {
+      "minCutoff": 1.0,
+      "beta": 0.007
+    },
+    "blendshapeFilterOverrides": {
+      "eyeBlinkLeft": {
+        "minCutoff": 10.0,
+        "beta": 0.5
+      },
+      "eyeBlinkRight": {
+        "minCutoff": 10.0,
+        "beta": 0.5
+      }
+    },
+    "headFilter": {
+      "minCutoff": 1.5,
+      "beta": 0.1
+    },
+    "armCalibration": {
+      "minCutoff": 1.0,
+      "beta": 0.01
+    },
+    "handFilter": {
+      "minCutoff": 4.0,
+      "beta": 0.5
+    },
+    "mouthFilter": {
+      "noiseFloor": 0.01,
+      "minCutoffSilent": 1.0,
+      "minCutoffTalking": 8.0,
+      "amplitudeScale": 10
+    }
+  }
+}
