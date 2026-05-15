@@ -1,6 +1,9 @@
-# OttTuber
+# FurTuber
 
-A lightweight VRM 1.x avatar renderer with real-time face and body tracking for streaming. Designed as a modern replacement for VSeeFace that supports VRM 1.x avatars, uses MediaPipe for webcam-based tracking, and outputs to a transparent Electron window that OBS can capture directly.
+A hobbyist project created by furries, and for furries!
+FurTuber is a lightweight VRM 1.x avatar renderer with real-time face tracking for streaming. Designed as a modern replacement for VSeeFace that supports VRM 1.x avatars, uses MediaPipe for webcam-based face tracking, and outputs to a transparent Electron window that OBS can capture directly.
+
+This project is in active development! If you'd like to contribute, the help is gladly accepted!
 
 ## Features
 
